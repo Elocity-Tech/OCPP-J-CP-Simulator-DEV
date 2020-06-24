@@ -168,6 +168,7 @@
 		<span>Time Zone</span><input id="timeZone" type="text" placeholder="Time Zone" value="-3"/>
 		<span>idTag</span><input id="idTag" type="text" placeholder="idTag" value=""/>
 		
+		<span>statusNotification</span><input id="statusNotification" type="text" placeholder="statusNotification" value=""/>
 		<span>meterStart</span><input id="meterStart" type="text" placeholder="meterStart" value=""/>
 		<span>reservationId</span><input id="reservationId" type="text" placeholder="reservationId" value=""/>
 		<span>meterStop</span><input id="meterStop" type="text" placeholder="meterStop" value=""/>
@@ -244,6 +245,7 @@
 	var meterType = $('#meterType').val();
 	var meterSerialNumber = $('#meterSerialNumber').val();
 	var datatrasfer = $('#datatrasfer').val();
+	var statusNotification = $('#statusNotification').val();
 	
 	function onAction(){
 		idTag = $('#idTag').val();
@@ -261,7 +263,8 @@
 		imsi = $('#imsi').val();
 		meterType = $('#meterType').val();
 		meterSerialNumber = $('#meterSerialNumber').val();
-		datatrasfer = $('#datatrasfer').val();
+		datatrasfer = $('#datatrasfer').val();		
+		statusNotification = $('#statusNotification').val();
 	}
 	
 	try{ //if (sessionStorage.getItem("TransactionId") !== undefined) {}else{}
@@ -744,7 +747,7 @@
 	sessionStorage.setItem('LastAction', "StatusNotification");
         var SN = JSON.stringify([2, id, "StatusNotification", {
             "connectorId": connectorId,
-            "status": "Available",
+            "status": statusNotification,
             "errorCode": "NoError",
             "info": "",
             "timestamp": formatDate(new Date()),
