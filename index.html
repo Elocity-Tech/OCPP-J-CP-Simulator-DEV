@@ -465,14 +465,14 @@
                             //Reset type SOFT, HARD
                             var ResetS = JSON.stringify([3, id, {"status": "Accepted"}]);
                             _websocket.send(ResetS);
-                            location.reload();
+                            //location.reload();
                             break;
                         case "RemoteStopTransaction":
                             //TransactionID
                             var remStp = JSON.stringify([3, id, {"status": "Accepted"}]);
                             _websocket.send(remStp);
-							var stop_id = (JSON.parse(msg.data)[3].transactionId);
-							stopTransaction(stop_id);
+		            var stop_id = (JSON.parse(msg.data)[3].transactionId);
+			    stopTransaction(stop_id);
                             $('.indicator').hide();
                             $('#yellow').show();
                             break;
@@ -480,35 +480,70 @@
                             //Need idTag, connectorId (map - ddata[3])
                             var remStrt = JSON.stringify([3, id, {"status": "Accepted"}]);
                             _websocket.send(remStrt);
-                            startTransaction();
-							
+                            startTransaction();	
                             break;
                         case "UnlockConnector": 
                             //connectorId
                             var UC = JSON.stringify([3, id, {"status": "Unlocked"}]);
                             _websocket.send(UC);
                             break;
-						case "ChangeAvailability": 
+                        case "ChangeAvailability": 
                             //connectorId
                             var CA = JSON.stringify([3, id, {"status": "Accepted"}]);
                             _websocket.send(CA);
                             break;	
-						case "ChangeConfiguration": 
+                        case "ChangeConfiguration": 
                             //connectorId
                             var CC = JSON.stringify([3, id, {"status": "Accepted"}]);
                             _websocket.send(CC);
                             break;		
-						case "ClearCache": 
+                        case "ClearCache": 
                             //connectorId
                             var CCache = JSON.stringify([3, id, {"status": "Accepted"}]);
                             _websocket.send(CCache);
                             break;		
-						case "GetConfiguration": 
+                        case "GetConfiguration": 
                             //connectorId
-                            var GC = JSON.stringify([3, id, {}]);
+                            var GC = JSON.stringify([3, id, { "key": ["key1"] }]);
                             _websocket.send(GC);
-                            break;		
-						//17
+                            break;
+		            //17
+			case "DataTransfer":
+                            var DT = JSON.stringify([3, id, { "status": "Accepted", "data": "string" }]);
+                            _websocket.send(DT);
+                            break;
+			case "GetLocalListVersion":
+                            var GLLV = JSON.stringify([3, id, { "listVersion" : 1 }]);
+                            _websocket.send(GLLV);
+                            break;
+                        case "SendLocalList":
+                            var SLL = JSON.stringify([3, id, {"status": "Accepted"}]);
+                            _websocket.send(SLL);
+                            break;
+                        case "CancelReservation":
+                            var CR = JSON.stringify([3, id, {"status": "Accepted"}]);
+                            _websocket.send(GC);
+                            break;
+                        case "ReserveNow":
+                            var RN = JSON.stringify([3, id, {"status": "Accepted"}]);
+                            _websocket.send(RN);
+                            break;
+                        case "ClearChargingProfile":
+                            var CGP = JSON.stringify([3, id,  {"status": "Accepted"}]);
+                            _websocket.send(CGP);
+                            break;
+                        case "GetCompositeSchedule":
+                            var GCS = JSON.stringify([3, id, {"status": "Accepted"}]);
+                            _websocket.send(GCS);
+                            break;
+                        case "SetChargingProfile":
+                            var SCP = JSON.stringify([3, id, {"status": "Accepted"}]);
+                            _websocket.send(SCP);
+                            break;
+                        case "TriggerMessage":
+                            var TM = JSON.stringify([3, id, {"status": "Accepted"}]);
+                            _websocket.send(TM);
+                            break;
                         default:
                             var error = JSON.stringify([4, id]);
                             _websocket.send(error);
