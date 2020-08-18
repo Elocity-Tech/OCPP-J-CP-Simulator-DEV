@@ -522,7 +522,7 @@
                             break;
                         case "CancelReservation":
                             var CR = JSON.stringify([3, id, {"status": "Accepted"}]);
-                            _websocket.send(GC);
+                            _websocket.send(CR);
                             break;
                         case "ReserveNow":
                             var RN = JSON.stringify([3, id, {"status": "Accepted"}]);
