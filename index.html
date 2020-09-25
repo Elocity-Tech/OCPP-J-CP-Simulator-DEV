@@ -27,6 +27,7 @@
 <button id="mv">Meter Values</button>
 <button id="status">Status Notification</button>
 <button id="data_transfer">Data Tranfer</button>
+<button id="start_meter_values">Start Meter Values</button>
 
 <div>
     <span class="indicator" id="red">____</span>
@@ -184,6 +185,20 @@
 		<span>meterValue</span>	<input id="meterValue" type="text" placeholder="meterValue" value=""/>
 		<span>meterValueUnit</span>	<input id="meterValueUnit" type="text" placeholder="meterValueUnit" value=""/>
 		<span>meterValueTransaction</span>	<input id="meterValueTransaction" type="text" placeholder="meterValueTransaction" value=""/>
+		<span>meterValueNumberOfMessages</span>
+		<input
+          id="meterValuesNumberOfMessages"
+          type="text"
+          placeholder="meterValuesNumberofMessages"
+          value=""
+        />
+        <span>meterValueSampleIntervalInSeconds</span>
+        <input
+          id="meterValueSampleIntervalInSeconds"
+          type="text"
+          placeholder="meterValueSampleIntervalInSeconds"
+          value=""
+        />
 		<span>meterSerialNumber</span><input id="meterSerialNumber" type="text" placeholder="meterSerialNumber" value=""/>
 		<span>datatransfer</span>	<input id="datatrasfer" type="text" placeholder="datatrasfer" value="data"/>
 		
@@ -748,7 +763,35 @@
     $('#stop').click(function () {
 	onAction();
 		stopTransaction();
-    });
+	});
+	
+	$("#start_meter_values").click(function () {
+        onAction();
+        sessionStorage.setItem("LastAction", "MeterValues");
+        const meterValuesArr = genrateMeterValues(
+		  Number.parseInt($("#meterValueTransaction").val()),
+		  Number.parseInt($('#connectorId').val()),
+          Number.parseInt($("#meterValuesNumberOfMessages").val())
+        );
+        const meterValueSampleIntervalInSeconds = Number.parseInt(
+          $("#meterValueSampleIntervalInSeconds").val()
+        );
+        let currIndex = 0;
+        const interval = setInterval(() => {
+          if (currIndex < meterValuesArr.length) {
+            var MV = JSON.stringify([
+              2,
+              id,
+              "MeterValues",
+              meterValuesArr[currIndex],
+            ]);
+            _websocket.send(MV);
+            currIndex++;
+          } else {
+            clearInterval(interval);
+          }
+        }, meterValueSampleIntervalInSeconds * 1000);
+      });
 
     $('#mv').click(function () {
 	onAction();
@@ -813,7 +856,85 @@
             _websocket.close(3001);
 			
         }
-    });
+	});
+	
+	function genrateMeterValues(transactionId, connectorId, numberOfMessage) {
+        const minSoc = 3.0;
+        const maxSoc = 100.0;
+        const minEnergy = 30.0;
+        const maxEnergy = 1000.0;
+        const avPower = 7000.0;
+        const avCurrent = 21.0;
+        const initialPayload = {
+          connectorId: connectorId,
+          transactionId: transactionId,
+          meterValue: [
+            {
+              timestamp: new Date().toISOString(),
+              sampledValue: [
+                {
+                  value: minEnergy.toString(),
+                  context: "Sample.Periodic",
+                  format: "Raw",
+                  measurand: "Energy.Active.Import.Register",
+                  location: "Outlet",
+                  unit: "Wh",
+                },
+              ],
+            },
+            {
+              timestamp: new Date().toISOString(),
+              sampledValue: [
+                {
+                  value: avCurrent.toString(),
+                  context: "Sample.Periodic",
+                  format: "Raw",
+                  measurand: "Current.Import",
+                  unit: "A",
+                },
+              ],
+            },
+            {
+              timestamp: new Date().toISOString(),
+              sampledValue: [
+                {
+                  value: minSoc.toString(),
+                  context: "Sample.Periodic",
+                  format: "Raw",
+                  measurand: "SoC",
+                  unit: "Percent",
+                },
+              ],
+            },
+            {
+              timestamp: new Date().toISOString(),
+              sampledValue: [
+                {
+                  value: avPower.toString(),
+                  context: "Sample.Periodic",
+                  format: "Raw",
+                  measurand: "Power.Active.Import",
+                  unit: "W",
+                },
+              ],
+            },
+          ],
+        };
+        let arr = [];
+        for (let i = 1; i <= numberOfMessage; i++) {
+          initialPayload.meterValue[0].sampledValue[0].value = (
+            parseFloat(initialPayload.meterValue[0].sampledValue[0].value) +
+            (maxEnergy - minEnergy) / numberOfMessage
+          ).toString();
+          initialPayload.meterValue[2].sampledValue[0].value = (
+            parseFloat(initialPayload.meterValue[2].sampledValue[0].value) +
+            (maxSoc - minSoc) / numberOfMessage
+          ).toString();
+          arr.push(JSON.stringify(initialPayload));
+        }
+        const result = arr.map((e) => JSON.parse(e));
+        return result;
+      }
 
 
 </script>
