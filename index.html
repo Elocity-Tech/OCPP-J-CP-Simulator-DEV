@@ -19,14 +19,14 @@
 
 <button id="connect">Connect</button>
 <button id="send">Authorize</button>
-<input id="connectorId" type="text" placeholder="connectorId" value="2"/>
+<input id="connectorId" type="text" placeholder="Connector Id" value=""/>
 <button id="start">Start Transaction</button>
-<input id ="TransToStp" type="text" placeholder="Transaction to stop" value=""/>
+<input id ="TransToStp" type="text" placeholder="Transaction Id" value=""/>
 <button id="stop">Stop Transaction</button>
 <button id="heartbeat">Heartbeat</button>
 <button id="mv">Meter Values</button>
 <button id="status">Status Notification</button>
-<button id="data_transfer">Data Tranfer</button>
+<button id="data_transfer">Data Transfer</button>
 <button id="start_meter_values">Start Meter Values</button>
 
 <div>
@@ -36,171 +36,52 @@
 	<span class="indicator" id="blue">____</span>
 </div>
 
-<div> <span>Time: </span><span id="time"></span></div>
+<div style="margin-top: 10px;"> <span>Time: </span><span id="time"></span></div>
 <div id="root_time"></div>
 <ul class="tabset_tabs">
-<li><a href="#tab1" class="active">UI</a></li>
-<li><a href="#tab2">Settings</a></li>
+<li><a href="#tab2" class="active">Settings</a></li>
 <li><a href="#tab3">Log</a></li>
 <li><a href="#tab4">Transactions</a></li>
 </ul>
-<div id="tab1" class="tabset_content">
-  <h2 class="tabset_label"></h2>
-      <div>
-	
-	
-	<div id = 'UI'>
-	<div>
-		<form id='UI_form'>
-			<div id='step1'>
-				<h2 class="center">STEP 1</h2>
-				<p class="center"><b>Choose your charging option</b></p>
-				<div class="table">
-				  <div class="table-cell"></div>
-				  <div class="table-cell plattform">
-					<a id='sc' href="#" class="btn">Slow charge</a>
-				  </div>
-				  <div class="table-cell enterprise">
-					<a id ='fc' href="#" class="btn">Fast charge</a>
-				  </div>
-				  <div class="table-cell cell-feature">Saves your battery</div>
-				  <div class="table-cell">
-					<svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-					  <title>check_blue</title>
-					  <path d="M6.116 14.884c.488.488 1.28.488 1.768 0l10-10c.488-.488.488-1.28 0-1.768s-1.28-.488-1.768 0l-9.08 9.15-4.152-4.15c-.488-.488-1.28-.488-1.768 0s-.488 1.28 0 1.768l5 5z" fill="limegreen" fill-rule="evenodd"/>
-					</svg>
-				  </div>
-				  <div class="table-cell">
-					
-				  </div>
-				  <div class="table-cell cell-feature">Saves your time</div>
-				  <div class="table-cell">				  
-				  </div>
-				  <div class="table-cell">
-					<svg class="enterprise-check" width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-					  <title>check_blue</title>
-					  <path d="M6.116 14.884c.488.488 1.28.488 1.768 0l10-10c.488-.488.488-1.28 0-1.768s-1.28-.488-1.768 0l-9.08 9.15-4.152-4.15c-.488-.488-1.28-.488-1.768 0s-.488 1.28 0 1.768l5 5z" fill="limegreen" fill-rule="evenodd"/>
-					</svg>
-				  </div>
-				  <div class="table-cell cell-feature">Cheap and efficient</div>
-				  <div class="table-cell">		
-						<svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-					  <title>check_blue</title>
-					  <path d="M6.116 14.884c.488.488 1.28.488 1.768 0l10-10c.488-.488.488-1.28 0-1.768s-1.28-.488-1.768 0l-9.08 9.15-4.152-4.15c-.488-.488-1.28-.488-1.768 0s-.488 1.28 0 1.768l5 5z" fill="limegreen" fill-rule="evenodd"/>
-					</svg>
-				  </div>
-				  <div class="table-cell">
-					<svg class="enterprise-check" width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-					  <title>check_blue</title>
-					  <path d="M6.116 14.884c.488.488 1.28.488 1.768 0l10-10c.488-.488.488-1.28 0-1.768s-1.28-.488-1.768 0l-9.08 9.15-4.152-4.15c-.488-.488-1.28-.488-1.768 0s-.488 1.28 0 1.768l5 5z" fill="limegreen" fill-rule="evenodd"/>
-					</svg>
-				  </div>
-				</div>
-			</div>
-			
-			<div id='step2v1'>
-				<h2 class="center">STEP 2</h2>
-				<p class="center"><b>Choose your tariff</b></p>
-				<div class="table">
-				  <div class="table-cell">Choose your tariff</div>
-				  <div class="table-cell plattform">
-					<a href="#" class="btn step2" data = 4>4 h.</a>
-				  </div>
-				  <div class="table-cell enterprise">
-					<a href="#" class="btn step2" data = 8>8 h.</a>
-				  </div>
-				  <div class="table-cell cell-feature">It will cost you</div>
-				  <div class="table-cell">
-					100 rub.
-				  </div> <div class="table-cell">
-					200 rub.
-				  </div>
-				</div>
-			</div>
-			<div id='step2v2'>
-				<h2 class="center">STEP 2</h2>
-				<p class="center"><b>Choose your tariff</b></p>
-				<div class="table">
-				  <div class="table-cell">Choose your tariff</div>
-				  <div class="table-cell plattform">
-					<a href="#" class="btn step2" data= 1>1 h.</a>
-				  </div>
-				  <div class="table-cell enterprise">
-					<a href="#" class="btn step2" data = 2>2 h.</a>
-				  </div>
-				   <div class="table-cell cell-feature">It will cost you</div>
-				  <div class="table-cell">
-					200 rub.
-				  </div> <div class="table-cell">
-					300 rub.
-				  </div>
-				</div>
-			</div>
-			
-			<div id='step3'>
-				<h2 class="center">STEP 3</h2>
-				<p class="center"><b>Insert money and plug-in your EV</b></p>
-				<iframe width="420" height="240"
-					src="https://www.youtube.com/embed/X2-dxlJ4klM">
-				</iframe>
-					
-				
-			</div>
-			
-			<div id='back'>
-				←Back
-			</div>
-			
-		</form>
-	</div>
-		
-		<img id='tesla' src = 'assets/img/tesla.png' />
-	</div>
-	
-	
-</div>
-  </div>
 <div id="tab2" class="tabset_content">
   <h2 class="tabset_label"></h2>
- <p>NOT READY</p> 
       <form>
 		<span>Endpoint URL</span><input id="endp" type="text" placeholder="Endpoint URL" value=""/>
-		<span>Id CP</span><input id="CP" type="text" placeholder="Id CP" value="HELLO"/>
-		<span>Time Zone</span><input id="timeZone" type="text" placeholder="Time Zone" value="-3"/>
-		<span>idTag</span><input id="idTag" type="text" placeholder="idTag" value=""/>
-		
-		<span>statusNotification</span><input id="statusNotification" type="text" placeholder="statusNotification" value=""/>
-		<span>meterStart</span><input id="meterStart" type="text" placeholder="meterStart" value=""/>
-		<span>reservationId</span><input id="reservationId" type="text" placeholder="reservationId" value=""/>
-		<span>meterStop</span><input id="meterStop" type="text" placeholder="meterStop" value=""/>
-		<span>transactionData</span><input id="transactionData" type="text" placeholder="transactionData" value=""/>
-		<span>chargePointVendor</span><input id="chargePointVendor" type="text" placeholder="chargePointVendor" value=""/>
-		<span>chargePointModel</span><input id="chargePointModel" type="text" placeholder="chargePointModel" value=""/>
-		<span>chargePointSerialNumber</span><input id="chargePointSerialNumber" type="text" placeholder="chargePointSerialNumber" value=""/>
-		<span>chargeBoxSerialNumber</span><input id="chargeBoxSerialNumber" type="text" placeholder="chargeBoxSerialNumber" value=""/>
-		<span>firmwareVersion</span>	<input id="firmwareVersion" type="text" placeholder="firmwareVersion" value=""/>
-		<span>iccid</span><input id="iccid" type="text" placeholder="iccid" value=""/>
-		<span>imsi</span><input id="imsi" type="text" placeholder="imsi" value=""/>
-		<span>meterType</span>	<input id="meterType" type="text" placeholder="meterType" value=""/>
-		<span>meterValue</span>	<input id="meterValue" type="text" placeholder="meterValue" value=""/>
-		<span>meterValueUnit</span>	<input id="meterValueUnit" type="text" placeholder="meterValueUnit" value=""/>
-		<span>meterValueTransaction</span>	<input id="meterValueTransaction" type="text" placeholder="meterValueTransaction" value=""/>
-		<span>meterValueNumberOfMessages</span>
+		<span>Charge Point Id</span><input id="CP" type="text" placeholder="Charge Point Id" value=""/>
+		<span>Time Zone</span><input id="timeZone" type="text" placeholder="Time Zone" value=""/>
+		<span>Id Tag</span><input id="idTag" type="text" placeholder="Id Tag" value=""/>
+		<span>Status Notification</span><input id="statusNotification" type="text" placeholder="Status Notification" value=""/>
+		<span>Meter Start</span><input id="meterStart" type="text" placeholder="Meter Start" value=""/>
+		<span>Reservation Id</span><input id="reservationId" type="text" placeholder="Reservation Id" value=""/>
+		<span>Meter Stop</span><input id="meterStop" type="text" placeholder="Meter Stop" value=""/>
+		<span>Transaction Data</span><input id="transactionData" type="text" placeholder="Transaction Data" value=""/>
+		<span>Charge Point Vendor</span><input id="chargePointVendor" type="text" placeholder="Charge Point Vendor" value=""/>
+		<span>Charge Point Model</span><input id="chargePointModel" type="text" placeholder="Charge Point Model" value=""/>
+		<span>Charge Point Serial Number</span><input id="chargePointSerialNumber" type="text" placeholder="Charge Point Serial Number" value=""/>
+		<span>Charge Box Serial Number</span><input id="chargeBoxSerialNumber" type="text" placeholder="Charge Box Serial Number" value=""/>
+		<span>Firmware Version</span>	<input id="firmwareVersion" type="text" placeholder="Firmware Version" value=""/>
+		<span>Iccid</span><input id="iccid" type="text" placeholder="Iccid" value=""/>
+		<span>Imsi</span><input id="imsi" type="text" placeholder="Imsi" value=""/>
+		<span>Meter Type</span>	<input id="meterType" type="text" placeholder="Meter Type" value=""/>
+		<span>Meter Value</span>	<input id="meterValue" type="text" placeholder="Meter Value" value=""/>
+		<span>Meter Value Unit</span>	<input id="meterValueUnit" type="text" placeholder="Meter Value Unit" value=""/>
+		<span>Meter Value Transaction</span>	<input id="meterValueTransaction" type="text" placeholder="Meter Value Transaction" value=""/>
+		<span>Meter Value Number Of Messages</span>
 		<input
           id="meterValuesNumberOfMessages"
           type="text"
-          placeholder="meterValuesNumberofMessages"
+          placeholder="Meter Value Number Of Messages"
           value=""
         />
-        <span>meterValueSampleIntervalInSeconds</span>
+        <span>Meter Value Sample Interval In Seconds</span>
         <input
           id="meterValueSampleIntervalInSeconds"
           type="text"
-          placeholder="meterValueSampleIntervalInSeconds"
+          placeholder="Meter Value Sample Interval In Seconds"
           value=""
         />
-		<span>meterSerialNumber</span><input id="meterSerialNumber" type="text" placeholder="meterSerialNumber" value=""/>
-		<span>datatransfer</span>	<input id="datatrasfer" type="text" placeholder="datatrasfer" value="data"/>
+		<span>Meter Serial Number</span><input id="meterSerialNumber" type="text" placeholder="Meter Serial Number" value=""/>
+		<span>Data Transfer</span>	<input id="datatrasfer" type="text" placeholder="Data Transfer" value=""/>
 		
 	  </form>
   </div>
@@ -573,7 +454,7 @@
             };
 
             _websocket.onclose = function (evt) {
-                $('#connect').text('Connect').css('background', '#369');
+                $('#connect').text('Connect').css('background', '#04ce78');
                 if (evt.code == 3001) {
                     logMsg('ws closed');
                     _websocket = null;

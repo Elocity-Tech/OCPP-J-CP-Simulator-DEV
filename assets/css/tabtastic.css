@@ -1,8 +1,8 @@
 .tabset_tabs	{ margin:0; padding:0; list-style-type:none; position:relative; z-index:2; white-space:nowrap }
 .tabset_tabs li	{ margin:0; padding:0; display:inline }
-.tabset_tabs a	{ color:#339 ! important; background-color:#def ! important; border:1px solid #99c; text-decoration:none; padding:0 0.6em; border-left-width:0; border-bottom:none }
-.tabset_tabs a:hover	{ color:#00c ! important; background-color:#eff ! important }
-.tabset_tabs a.active	{ color:black ! important; background-color:white ! important; border-color:black; border-left-width:1px; cursor:default; border-bottom:white; padding-top:1px; padding-bottom:1px }
+.tabset_tabs a	{ color:black ! important; background-color:#def ! important; border:1px solid #99c; text-decoration:none; padding:0 0.6em; border-left-width:0; border-bottom:none }
+.tabset_tabs a:hover	{ color:#04ce78 ! important; background-color:#eff ! important }
+.tabset_tabs a.active	{ color:#04ce78 ! important; background-color:white ! important; border-color:black; border-left-width:1px; cursor:default; border-bottom:white; padding-top:1px; padding-bottom:1px }
 
 .tabset_tabs li.firstchild a	{ border-left-width:1px }
 
