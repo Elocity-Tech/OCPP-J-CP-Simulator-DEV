@@ -82,7 +82,12 @@
         />
 		<!-- <span>Meter Serial Number</span><input id="meterSerialNumber" type="text" placeholder="Meter Serial Number" value=""/>
 		<span>Data Transfer</span>	<input id="datatrasfer" type="text" placeholder="Data Transfer" value=""/> -->
-		
+    <span>Min SoC (percent)</span><input id="minSoc" type="text" placeholder="Min SoC" value="3"/>
+    <span>Max SoC (percent)</span><input id="maxSoc" type="text" placeholder="Max SoC" value="100"/>
+    <span>Min Energy (kWh)</span><input id="minEnergy" type="text" placeholder="Min Energy" value="0"/>
+    <span>Max Energy (kWh)</span><input id="maxEnergy" type="text" placeholder="Max Energy" value="20"/>
+    <span>Av Power (W)</span><input id="avPower" type="text" placeholder="Av Power" value="7000"/>
+    <span>Av Current (A)</span><input id="avCurrent" type="text" placeholder="Av Current" value="21"/>
 	  </form>
   </div>
 <div id="tab3" class="tabset_content">
@@ -504,7 +509,7 @@
             "connectorId": parseInt(connectorId),
             "idTag": idTag,
             "timestamp": formatDate(new Date()),
-            "meterStart": 0,
+            "meterStart": Number.parseInt($('#minEnergy').val()),
             "reservationId": 0
         }]);
         _websocket.send(strtT);
@@ -525,7 +530,7 @@
             "transactionId": parseInt(ssid),
             "idTag": idTag,
             "timestamp": formatDate(new Date()),
-            "meterStop": 20
+            "meterStop": Number.parseInt($('#maxEnergy').val())
         }]);
 
 		var arr = JSON.parse(sessionStorage.getItem("TransactionId"));
@@ -743,12 +748,12 @@
 	});
 	
 	function genrateMeterValues(transactionId, connectorId, numberOfMessage) {
-        const minSoc = 3.0;
-        const maxSoc = 100.0;
-        const minEnergy = 0.0;
-        const maxEnergy = 20.0;
-        const avPower = 7000.0;
-        const avCurrent = 21.0;
+        const minSoc = Number.parseInt($('#minSoc').val());
+        const maxSoc = Number.parseInt($('#maxSoc').val());
+        const minEnergy = Number.parseInt($('#minEnergy').val());
+        const maxEnergy = Number.parseInt($('#maxEnergy').val());
+        const avPower = Number.parseInt($('#avPower').val());
+        const avCurrent = Number.parseInt($('#avCurrent').val());
         const initialPayload = {
           connectorId: connectorId,
           transactionId: transactionId,
