@@ -24,7 +24,7 @@
 <input id ="TransToStp" type="text" placeholder="Transaction Id" value=""/>
 <button id="stop">Stop Transaction</button>
 <button id="heartbeat">Heartbeat</button>
-<button id="mv">Meter Values</button>
+<!-- <button id="mv">Meter Values</button> -->
 <button id="status">Status Notification</button>
 <button id="data_transfer">Data Transfer</button>
 <button id="start_meter_values">Start Meter Values</button>
@@ -46,15 +46,15 @@
 <div id="tab2" class="tabset_content">
   <h2 class="tabset_label"></h2>
       <form>
-		<span>Endpoint URL</span><input id="endp" type="text" placeholder="Endpoint URL" value=""/>
-		<span>Charge Point Id</span><input id="CP" type="text" placeholder="Charge Point Id" value=""/>
-		<span>Time Zone</span><input id="timeZone" type="text" placeholder="Time Zone" value=""/>
-		<span>Id Tag</span><input id="idTag" type="text" placeholder="Id Tag" value=""/>
-		<span>Status Notification</span><input id="statusNotification" type="text" placeholder="Status Notification" value=""/>
-		<span>Meter Start</span><input id="meterStart" type="text" placeholder="Meter Start" value=""/>
+		<span>Endpoint URL</span><input id="endp" type="text" placeholder="Endpoint URL" value="wss://ocpp.evfirst.ca/ocpp/"/>
+		<span>Charge Point Id (BRM_02, BTP_01, ETP_01, PSN_01, PSN_02)</span><input id="CP" type="text" placeholder="Charge Point Id" value="PSN_01"/>
+		<!-- <span>Time Zone</span><input id="timeZone" type="text" placeholder="Time Zone" value=""/> -->
+		<span>Id Tag</span><input id="idTag" type="text" placeholder="Id Tag" value="Accepted"/>
+		<span>Status Notification</span><input id="statusNotification" type="text" placeholder="Status Notification" value="Available"/>
+		<!-- <span>Meter Start</span><input id="meterStart" type="text" placeholder="Meter Start" value=""/> -->
 		<span>Reservation Id</span><input id="reservationId" type="text" placeholder="Reservation Id" value=""/>
-		<span>Meter Stop</span><input id="meterStop" type="text" placeholder="Meter Stop" value=""/>
-		<span>Transaction Data</span><input id="transactionData" type="text" placeholder="Transaction Data" value=""/>
+		<!-- <span>Meter Stop</span><input id="meterStop" type="text" placeholder="Meter Stop" value=""/> -->
+		<!-- <span>Transaction Data</span><input id="transactionData" type="text" placeholder="Transaction Data" value=""/>
 		<span>Charge Point Vendor</span><input id="chargePointVendor" type="text" placeholder="Charge Point Vendor" value=""/>
 		<span>Charge Point Model</span><input id="chargePointModel" type="text" placeholder="Charge Point Model" value=""/>
 		<span>Charge Point Serial Number</span><input id="chargePointSerialNumber" type="text" placeholder="Charge Point Serial Number" value=""/>
@@ -64,24 +64,24 @@
 		<span>Imsi</span><input id="imsi" type="text" placeholder="Imsi" value=""/>
 		<span>Meter Type</span>	<input id="meterType" type="text" placeholder="Meter Type" value=""/>
 		<span>Meter Value</span>	<input id="meterValue" type="text" placeholder="Meter Value" value=""/>
-		<span>Meter Value Unit</span>	<input id="meterValueUnit" type="text" placeholder="Meter Value Unit" value=""/>
-		<span>Meter Value Transaction</span>	<input id="meterValueTransaction" type="text" placeholder="Meter Value Transaction" value=""/>
-		<span>Meter Value Number Of Messages</span>
+		<span>Meter Value Unit</span>	<input id="meterValueUnit" type="text" placeholder="Meter Value Unit" value=""/> -->
+		<!-- <span>Meter Value - Transaction Id</span>	<input id="meterValueTransaction" type="text" placeholder="Meter Value Transaction" value=""/> -->
+		<span>Meter Value - Number Of Messages</span>
 		<input
           id="meterValuesNumberOfMessages"
           type="text"
           placeholder="Meter Value Number Of Messages"
-          value=""
+          value="5"
         />
-        <span>Meter Value Sample Interval In Seconds</span>
+        <span>Meter Value - Sample Interval In Seconds</span>
         <input
           id="meterValueSampleIntervalInSeconds"
           type="text"
           placeholder="Meter Value Sample Interval In Seconds"
-          value=""
+          value="10"
         />
-		<span>Meter Serial Number</span><input id="meterSerialNumber" type="text" placeholder="Meter Serial Number" value=""/>
-		<span>Data Transfer</span>	<input id="datatrasfer" type="text" placeholder="Data Transfer" value=""/>
+		<!-- <span>Meter Serial Number</span><input id="meterSerialNumber" type="text" placeholder="Meter Serial Number" value=""/>
+		<span>Data Transfer</span>	<input id="datatrasfer" type="text" placeholder="Data Transfer" value=""/> -->
 		
 	  </form>
   </div>
@@ -650,7 +650,7 @@
         onAction();
         sessionStorage.setItem("LastAction", "MeterValues");
         const meterValuesArr = genrateMeterValues(
-		  Number.parseInt($("#meterValueTransaction").val()),
+		  Number.parseInt($('#TransToStp').val()),
 		  Number.parseInt($('#connectorId').val()),
           Number.parseInt($("#meterValuesNumberOfMessages").val())
         );
@@ -745,8 +745,8 @@
 	function genrateMeterValues(transactionId, connectorId, numberOfMessage) {
         const minSoc = 3.0;
         const maxSoc = 100.0;
-        const minEnergy = 30.0;
-        const maxEnergy = 1000.0;
+        const minEnergy = 0.0;
+        const maxEnergy = 20.0;
         const avPower = 7000.0;
         const avCurrent = 21.0;
         const initialPayload = {
@@ -762,7 +762,7 @@
                   format: "Raw",
                   measurand: "Energy.Active.Import.Register",
                   location: "Outlet",
-                  unit: "Wh",
+                  unit: "kWh",
                 },
               ],
             },
