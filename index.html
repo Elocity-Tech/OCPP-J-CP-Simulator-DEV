@@ -665,11 +665,13 @@
         let currIndex = 0;
         const interval = setInterval(() => {
           if (currIndex < meterValuesArr.length) {
+            var meterValue = meterValuesArr[currIndex];
+	    meterValue.meterValue.forEach(e => e.timestamp = new Date().toISOString());
             var MV = JSON.stringify([
               2,
               id,
               "MeterValues",
-              meterValuesArr[currIndex],
+              meterValue,
             ]);
             _websocket.send(MV);
             currIndex++;
