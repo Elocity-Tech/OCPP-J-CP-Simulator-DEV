@@ -646,12 +646,14 @@
 
     });
 
+    let interval;
     $('#stop').click(function () {
-	onAction();
-		stopTransaction();
-	});
+        onAction();
+        stopTransaction();
+        clearInterval(interval);
+    });
 	
-	$("#start_meter_values").click(function () {
+    $("#start_meter_values").click(function () {
         onAction();
         sessionStorage.setItem("LastAction", "MeterValues");
         const meterValuesArr = genrateMeterValues(
@@ -663,7 +665,7 @@
           $("#meterValueSampleIntervalInSeconds").val()
         );
         let currIndex = 0;
-        const interval = setInterval(() => {
+         interval = setInterval(() => {
           if (currIndex < meterValuesArr.length) {
             var meterValue = meterValuesArr[currIndex];
 	    meterValue.meterValue.forEach(e => e.timestamp = new Date().toISOString());
