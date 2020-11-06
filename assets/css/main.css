@@ -1,244 +1,254 @@
- body {
-            background: lightgrey;
-	
-        }
+body {
+  background: lightgrey;
+}
 
-        button, input, select {
-            display: block;
-            width: 100%;
-            margin-bottom: 5px;
-            cursor: pointer;
-        }
-		
-		input{}
-		
-        button {
-            background: #04ce78;
-            color: #fff;
-            padding: 5px 0;
-            border: none;
-        }
+.flex-container {
+  width: 100%;
+}
+.item-1,
+.item-2 {
+  float: left;
+  width: 50%;
+  box-sizing: border-box;
+  padding: 5px;
+}
 
-        li {
-        }
+button,
+input,
+select {
+  display: block;
+  width: 100%;
+  margin-bottom: 5px;
+  cursor: pointer;
+}
 
-        #red, #green, #blue {
-            min-width: 10px;
-        }
+input {
+}
 
-        #red {
-            background-color: red;
-        }
+button {
+  background: #04ce78;
+  color: #fff;
+  padding: 5px 0;
+  border: none;
+}
 
-        #green {
-            background-color: green;
-        }
+li {
+}
 
-        #blue {
-            background-color: blue;
-        }
+#red,
+#green,
+#blue {
+  min-width: 10px;
+}
 
-        #yellow {
-            background-color: yellow;
-        }
-		
-		table,th,tr,td{
-			border: 1px solid black;
-		}
-		
-		table{
-			margin: auto;
-		}
-		form{
-			padding-top: 20px;
-		}
-		
-		.center{
-			text-align:center;
-		}
-		
-		a{
-			color: green;
-			text-decoration:none;
-		}
-		
-		a:visited, a:focus{
-			color: green;
-			cursor:pointer;
-		}
-		
-		a:hover{
-			color:orange;
-		}
+#red {
+  background-color: red;
+}
 
-		
-		
-		#UI{
-			margin: auto;
-			border: 1px solid black;
-			border-radius: 3px;
-			width:800px;
-			height: 480px;
-			overflow: hidden;
-			position: relative;
+#green {
+  background-color: green;
+}
 
-			
-		}
-		
-		#UI_form{
-			position: absolute;
-			z-index:10;
-			left: 25px;
-		}
-		
-		#tesla{
-			z-index:2;
-			//border: 1px solid black;
-			position: absolute;
-			width: 600px;
-			top: 85px;
-			left: 210px;
-			
-		}
-		
-		#charge_point{
-		z-index:1;
-			position: absolute;
-			width: 300px;
-			left: 495px;
-		}
-		
-		#back{
-			position: absolute;
-			top:420px;
-			border: 1px solid black;
-			border-radius: 3px;
-			background-color: green;
-			padding: 10px;
-			color: white;
-		}
-		
-		#back:hover{
-			cursor: pointer;
-			background-color: #0ead0e;
-		}
-		
-		@mixin border-radius($radius) {
-		  -webkit-border-radius: $radius;
-		  -moz-border-radius: $radius;
-		  -ms-border-radius: $radius;
-		  border-radius: $radius;
-		}
+#blue {
+  background-color: blue;
+}
 
-		@mixin transition($args...) {
-		  -webkit-transition: $args;
-		  -moz-transition: $args;
-		  -ms-transition: $args;
-		  -o-transition: $args;
-		  transition: $args;
-		}
+#yellow {
+  background-color: yellow;
+}
 
-		.table {
-		  border: 1px solid green;
-		  border-radius: 5px;
-		  display: flex;
-		  flex-wrap: wrap;
-		  max-width: 500px;
-		}
+table,
+th,
+tr,
+td {
+  border: 1px solid black;
+}
 
-		.table-cell {
-		  border-bottom: 1px solid green;
-		  box-sizing: border-box;
-		  flex-grow: 1;
-		  width: 100%;
-		  padding: 0.8em 1.2em;
-		  overflow: hidden;
-		  list-style-type: none;
-		  text-align: center;
-		  font-weight: 300;
-		  margin: {
-			top: 1px;
-			left: 1px;
-		  }
-		  &:first-child {
-			//outline: 1px solid #fff;
-			background: transparent;
-			@media only screen and (max-width : 768px) {
-					display: none;
-				}
-		  }
-		  &:nth-child(3) {
-			//outline: 1px solid #30305b;
-		  }
-		  &:nth-child(-n+3) {
-			padding: {
-				top: 40px;
-				bottom: 40px;
-			}
-		  }
-		  > h3 {
-			font-size: 26px;
-			margin: {
-				top: 0;
-				bottom: 3rem;
-			}
-		  }
-		  &.cell-feature {
-			
-			text-align: left;
-			font-size: 18px;
-		  }
-		  &.plattform {
-			color: limegreen;
-			a.btn {
-			  color: limegreen;
-			  
-			  &:hover {
-				background-color: limegreen;
-				border-color: limegreen;
-				
-			  }
-			}
-		  }
-		  &.enterprise {
-			background-color: #30305b;
-			
-			a.btn {
-			  
-			  &:hover {
-				background-color: #85bafc;
-				border-color: #85bafc;
-				
-			  }
-			}
-		  }
-		}
+table {
+  margin: auto;
+}
+form {
+  padding-top: 20px;
+}
 
-		/* Table columns
+.center {
+  text-align: center;
+}
+
+a {
+  color: green;
+  text-decoration: none;
+}
+
+a:visited,
+a:focus {
+  color: green;
+  cursor: pointer;
+}
+
+a:hover {
+  color: orange;
+}
+
+#UI {
+  margin: auto;
+  border: 1px solid black;
+  border-radius: 3px;
+  width: 800px;
+  height: 480px;
+  overflow: hidden;
+  position: relative;
+}
+
+#UI_form {
+  position: absolute;
+  z-index: 10;
+  left: 25px;
+}
+
+#tesla {
+  z-index: 2;
+  //border: 1px solid black;
+  position: absolute;
+  width: 600px;
+  top: 85px;
+  left: 210px;
+}
+
+#charge_point {
+  z-index: 1;
+  position: absolute;
+  width: 300px;
+  left: 495px;
+}
+
+#back {
+  position: absolute;
+  top: 420px;
+  border: 1px solid black;
+  border-radius: 3px;
+  background-color: green;
+  padding: 10px;
+  color: white;
+}
+
+#back:hover {
+  cursor: pointer;
+  background-color: #0ead0e;
+}
+
+@mixin border-radius($radius) {
+  -webkit-border-radius: $radius;
+  -moz-border-radius: $radius;
+  -ms-border-radius: $radius;
+  border-radius: $radius;
+}
+
+@mixin transition($args...) {
+  -webkit-transition: $args;
+  -moz-transition: $args;
+  -ms-transition: $args;
+  -o-transition: $args;
+  transition: $args;
+}
+
+.table {
+  border: 1px solid green;
+  border-radius: 5px;
+  display: flex;
+  flex-wrap: wrap;
+  max-width: 500px;
+}
+
+.table-cell {
+  border-bottom: 1px solid green;
+  box-sizing: border-box;
+  flex-grow: 1;
+  width: 100%;
+  padding: 0.8em 1.2em;
+  overflow: hidden;
+  list-style-type: none;
+  text-align: center;
+  font-weight: 300;
+  margin: {
+    top: 1px;
+    left: 1px;
+  }
+  &:first-child {
+    //outline: 1px solid #fff;
+    background: transparent;
+    @media only screen and (max-width: 768px) {
+      display: none;
+    }
+  }
+  &:nth-child(3) {
+    //outline: 1px solid #30305b;
+  }
+  &:nth-child(-n + 3) {
+    padding: {
+      top: 40px;
+      bottom: 40px;
+    }
+  }
+  > h3 {
+    font-size: 26px;
+    margin: {
+      top: 0;
+      bottom: 3rem;
+    }
+  }
+  &.cell-feature {
+    text-align: left;
+    font-size: 18px;
+  }
+  &.plattform {
+    color: limegreen;
+    a.btn {
+      color: limegreen;
+
+      &:hover {
+        background-color: limegreen;
+        border-color: limegreen;
+      }
+    }
+  }
+  &.enterprise {
+    background-color: #30305b;
+
+    a.btn {
+      &:hover {
+        background-color: #85bafc;
+        border-color: #85bafc;
+      }
+    }
+  }
+}
+
+/* Table columns
 		================================== */
-		.table-cell  {
-		  width: calc(33.33% - 1px);
-		  &.cell-feature {
-			  @media only screen and (max-width : 768px) {
-				  width: 100%;
-				  text-align: center;
-			  }
-		  }
-		}
+.table-cell {
+  width: calc(33.33% - 1px);
+  &.cell-feature {
+    @media only screen and (max-width: 768px) {
+      width: 100%;
+      text-align: center;
+    }
+  }
+}
 
-		svg.enterprise-check path {
-		  fill: #30305b !important;
-		}
+svg.enterprise-check path {
+  fill: #30305b !important;
+}
 
-		a.btn {
-		  border: 2px solid;
-		  border-radius: 5px;
-		  padding: .6rem .9rem .6rem .9rem;
-		  font-weight: 400;
-		  text: {
-			transform: uppercase;
-			decoration: none;
-		  }
-		  @include transition(0.2s ease-in-out);
-		  @include border-radius(.3rem);
-		}
+a.btn {
+  border: 2px solid;
+  border-radius: 5px;
+  padding: 0.6rem 0.9rem 0.6rem 0.9rem;
+  font-weight: 400;
+  text: {
+    transform: uppercase;
+    decoration: none;
+  }
+  @include transition(0.2s ease-in-out);
+  @include border-radius(0.3rem);
+}
