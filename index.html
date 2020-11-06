@@ -47,7 +47,9 @@
   <h2 class="tabset_label"></h2>
       <form>
 		<span>Endpoint URL</span><input id="endp" type="text" placeholder="Endpoint URL" value="wss://ocpp.evfirst.ca/ocpp/"/>
-		<span>Charge Point Id (BRM_02, BTP_01, ETP_01, PSN_01, PSN_02)</span><input id="CP" type="text" placeholder="Charge Point Id" value="PSN_01"/>
+    <span>Charge Point Id (BRM_02, BTP_01, ETP_01, PSN_01, PSN_02)</span><input id="CP" type="text" placeholder="Charge Point Id" value="PSN_01"/>
+    <span>Charge Point Vendor</span><input id="chargePointVendor" type="text" placeholder="Charge Point Vendor" value="Tritium"/>
+		<span>Charge Point Model</span><input id="chargePointModel" type="text" placeholder="Charge Point Model" value="RT175 -S"/>
 		<!-- <span>Time Zone</span><input id="timeZone" type="text" placeholder="Time Zone" value=""/> -->
 		<span>Id Tag</span><input id="idTag" type="text" placeholder="Id Tag" value="Accepted"/>
 		<span>Status Notification</span><input id="statusNotification" type="text" placeholder="Status Notification" value="Available"/>
@@ -55,8 +57,6 @@
 		<span>Reservation Id</span><input id="reservationId" type="text" placeholder="Reservation Id" value=""/>
 		<!-- <span>Meter Stop</span><input id="meterStop" type="text" placeholder="Meter Stop" value=""/> -->
 		<!-- <span>Transaction Data</span><input id="transactionData" type="text" placeholder="Transaction Data" value=""/>
-		<span>Charge Point Vendor</span><input id="chargePointVendor" type="text" placeholder="Charge Point Vendor" value=""/>
-		<span>Charge Point Model</span><input id="chargePointModel" type="text" placeholder="Charge Point Model" value=""/>
 		<span>Charge Point Serial Number</span><input id="chargePointSerialNumber" type="text" placeholder="Charge Point Serial Number" value=""/>
 		<span>Charge Box Serial Number</span><input id="chargeBoxSerialNumber" type="text" placeholder="Charge Box Serial Number" value=""/>
 		<span>Firmware Version</span>	<input id="firmwareVersion" type="text" placeholder="Firmware Version" value=""/>
@@ -573,8 +573,8 @@
 	function BootNotification(){
 	
 		          var BN = JSON.stringify([2, id, "BootNotification", {
-                    "chargePointVendor": "Tritium",
-                    "chargePointModel": "RT175 -S",
+                    "chargePointVendor": `${$('#chargePointVendor').val()}`,
+                    "chargePointModel": `${$('#chargePointModel').val()}`,
                     "chargePointSerialNumber": "avt.001.13.1",
                     "chargeBoxSerialNumber": "avt.001.13.1.01",
                     "firmwareVersion": "0.9.87",
