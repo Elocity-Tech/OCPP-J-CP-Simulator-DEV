@@ -206,6 +206,7 @@
     </script>
 
     <script>
+      var meterValueInterval;    
       var tz;
       var idTag = $("#idTag").val();
       var connectorId = $("#connectorId").val();
@@ -610,6 +611,7 @@
       }
 
       function stopTransaction(transaction_id = false) {
+        clearInterval(meterValueInterval);
         sessionStorage.setItem("LastAction", "stopTransaction");
         transaction_id == false
           ? (ssid = sessionStorage.getItem("TransactionId"))
@@ -754,11 +756,10 @@
         startTransaction();
       });
 
-      let interval;
       $("#stop").click(function () {
         onAction();
         stopTransaction();
-        clearInterval(interval);
+        clearInterval(meterValueInterval);
       });
 
       $("#start_meter_values").click(function () {
@@ -773,7 +774,8 @@
           $("#meterValueSampleIntervalInSeconds").val()
         );
         let currIndex = 0;
-        interval = setInterval(() => {
+        clearInterval(meterValueInterval);
+        meterValueInterval = setInterval(() => {
           if (currIndex < meterValuesArr.length) {
             var meterValue = meterValuesArr[currIndex];
             meterValue.meterValue.forEach(
@@ -783,7 +785,7 @@
             _websocket.send(MV);
             currIndex++;
           } else {
-            clearInterval(interval);
+            clearInterval(meterValueInterval);
           }
         }, meterValueSampleIntervalInSeconds * 1000);
       });
