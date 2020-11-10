@@ -90,12 +90,7 @@
             />
             <!-- <span>Time Zone</span><input id="timeZone" type="text" placeholder="Time Zone" value=""/> -->
             <span>Id Tag</span
-            ><input
-              id="idTag"
-              type="text"
-              placeholder="Id Tag"
-              value="RF101"
-            />
+            ><input id="idTag" type="text" placeholder="Id Tag" value="RF101" />
             <span>Status Notification (Charging, Finishing, Available)</span
             ><input
               id="statusNotification"
@@ -206,7 +201,7 @@
     </script>
 
     <script>
-      var meterValueInterval;    
+      var meterValueInterval;
       var tz;
       var idTag = $("#idTag").val();
       var connectorId = $("#connectorId").val();
@@ -225,6 +220,8 @@
       var meterSerialNumber = $("#meterSerialNumber").val();
       var datatrasfer = $("#datatrasfer").val();
       var statusNotification = $("#statusNotification").val();
+      var meterValueIndex = 0;
+      var meterValuesArr;
 
       function onAction() {
         idTag = $("#idTag").val();
@@ -611,7 +608,6 @@
       }
 
       function stopTransaction(transaction_id = false) {
-        clearInterval(meterValueInterval);
         sessionStorage.setItem("LastAction", "stopTransaction");
         transaction_id == false
           ? (ssid = sessionStorage.getItem("TransactionId"))
@@ -623,6 +619,19 @@
         if (transaction_id === false && $("#TransToStp").val() != "") {
           ssid = $("#TransToStp").val();
         }
+        var meterStopValue;
+        if (meterValueIndex > 0) {
+          meterValueIndex--;
+          meterStopValue = Math.ceil(
+            Number.parseFloat(
+              meterValuesArr[meterValueIndex].meterValue[0].sampledValue[0]
+                .value
+            )
+          );
+        } else {
+          meterStopValue = Number.parseInt($("#maxEnergy").val());
+        }
+
         var stpT = JSON.stringify([
           2,
           id,
@@ -631,10 +640,11 @@
             transactionId: parseInt(ssid),
             idTag: idTag,
             timestamp: formatDate(new Date()),
-            meterStop: Number.parseInt($("#maxEnergy").val()),
+            meterStop: meterStopValue,
           },
         ]);
-
+        meterValueIndex = 0;
+        clearInterval(meterValueInterval);
         var arr = JSON.parse(sessionStorage.getItem("TransactionId"));
         delete arr[arr.indexOf(parseInt(ssid))];
         sessionStorage.setItem("TransactionId", JSON.stringify(arr));
@@ -765,7 +775,7 @@
       $("#start_meter_values").click(function () {
         onAction();
         sessionStorage.setItem("LastAction", "MeterValues");
-        const meterValuesArr = genrateMeterValues(
+        meterValuesArr = genrateMeterValues(
           Number.parseInt($("#TransToStp").val()),
           Number.parseInt($("#connectorId").val()),
           Number.parseInt($("#meterValuesNumberOfMessages").val())
@@ -773,18 +783,19 @@
         const meterValueSampleIntervalInSeconds = Number.parseInt(
           $("#meterValueSampleIntervalInSeconds").val()
         );
-        let currIndex = 0;
+        meterValueIndex = 0;
         clearInterval(meterValueInterval);
         meterValueInterval = setInterval(() => {
-          if (currIndex < meterValuesArr.length) {
-            var meterValue = meterValuesArr[currIndex];
+          if (meterValueIndex < meterValuesArr.length) {
+            var meterValue = meterValuesArr[meterValueIndex];
             meterValue.meterValue.forEach(
               (e) => (e.timestamp = new Date().toISOString())
             );
             var MV = JSON.stringify([2, id, "MeterValues", meterValue]);
             _websocket.send(MV);
-            currIndex++;
+            meterValueIndex++;
           } else {
+            meterValueIndex = 0;
             clearInterval(meterValueInterval);
           }
         }, meterValueSampleIntervalInSeconds * 1000);
