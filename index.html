@@ -222,6 +222,21 @@
       var statusNotification = $("#statusNotification").val();
       var meterValueIndex = 0;
       var meterValuesArr;
+      var websocketUrlField = $("#endp").val();
+      var chargePointIdField = $("#CP").val();
+      var trxIdToStopField = $("#TransToStp").val();
+      var minSocField = $("#minSoc").val();
+      var maxSocField = $("#maxSoc").val();
+      var minEnergyField = $("#minEnergy").val();
+      var maxEnergyField = $("#maxEnergy").val();
+      var avPowerField = $("#avPower").val();
+      var avCurrentField = $("#avCurrent").val();
+      var meterValueSampleIntervalField = $(
+        "#meterValueSampleIntervalInSeconds"
+      ).val();
+      var meterValueNumberOfMessageField = $(
+        "#meterValuesNumberOfMessages"
+      ).val();
 
       function onAction() {
         idTag = $("#idTag").val();
@@ -241,6 +256,21 @@
         meterSerialNumber = $("#meterSerialNumber").val();
         datatrasfer = $("#datatrasfer").val();
         statusNotification = $("#statusNotification").val();
+        websocketUrlField = $("#endp").val();
+        chargePointIdField = $("#CP").val();
+        trxIdToStopField = $("#TransToStp").val();
+        minSocField = $("#minSoc").val();
+        maxSocField = $("#maxSoc").val();
+        minEnergyField = $("#minEnergy").val();
+        maxEnergyField = $("#maxEnergy").val();
+        avPowerField = $("#avPower").val();
+        avCurrentField = $("#avCurrent").val();
+        meterValueSampleIntervalField = $(
+          "#meterValueSampleIntervalInSeconds"
+        ).val();
+        meterValueNumberOfMessageField = $(
+          "#meterValuesNumberOfMessages"
+        ).val();
       }
 
       try {
@@ -437,6 +467,11 @@
                   );
                 }
                 $("#TransToStp").val(TransactionId);
+                document.getElementById("statusNotification").value =
+                  "Charging";
+                document.getElementById("status").click();
+                clearInterval(meterValueInterval);
+                document.getElementById("start_meter_values").click();
                 //logMsg(TransactionId);
               }
               logMsg("Response recieved successfully!");
@@ -725,80 +760,179 @@
       //bind controls
       $("#connect").click(function () {
         onAction();
+        const fieldsToCheck = [
+          ["Endpoint URL", websocketUrlField],
+          ["Charge Point Id", chargePointIdField],
+          ["Charge Point Vendor", chargePointVendor],
+          ["Charge Point Model", chargePointModel],
+        ];
+        if (fieldsToCheck.map((e) => e[1] !== "").every((e) => e === true)) {
+          $(".indicator").hide();
+          //alert(_websocket);
+          if (_websocket == null) {
+            sessionStorage.setItem("connecting", "true");
+          }
 
-        $(".indicator").hide();
-        //alert(_websocket);
-        if (_websocket == null) {
-          sessionStorage.setItem("connecting", "true");
-        }
+          showBlue();
 
-        showBlue();
+          function showBlue() {
+            connecting = getConnecting();
+            if (connecting == "true") {
+              setTimeout(function () {
+                $("#blue").show();
+                hideBlue();
+              }, 500);
+            }
+          }
 
-        function showBlue() {
-          connecting = getConnecting();
-          if (connecting == "true") {
+          function hideBlue() {
+            connecting = getConnecting();
             setTimeout(function () {
-              $("#blue").show();
-              hideBlue();
+              $("#blue").hide();
+              showBlue();
             }, 500);
           }
-        }
 
-        function hideBlue() {
-          connecting = getConnecting();
-          setTimeout(function () {
-            $("#blue").hide();
-            showBlue();
-          }, 500);
+          $("#console").html("");
+          wsConnect();
+        } else {
+          let alertStr = "Please fill the following fields: ";
+          fieldsToCheck.forEach((e) => {
+            if (e[1] === "") alertStr += `${e[0]},`;
+          });
+          let alert = alertStr.slice(0, -1);
+          alert += ".";
+          window.alert(alert);
         }
-
-        $("#console").html("");
-        wsConnect();
       });
 
       $("#send").click(function () {
         onAction();
-        Authorize();
+        const fieldsToCheck = [["Id Tag", idTag]];
+        if (fieldsToCheck.map((e) => e[1] !== "").every((e) => e === true)) {
+          Authorize();
+        } else {
+          let alertStr = "Please fill the following fields: ";
+          fieldsToCheck.forEach((e) => {
+            if (e[1] === "") alertStr += `${e[0]},`;
+          });
+          let alert = alertStr.slice(0, -1);
+          alert += ".";
+          window.alert(alert);
+        }
       });
 
       $("#start").click(function () {
         onAction();
-        startTransaction();
+        const fieldsToCheck = [
+          ["Connector Id", connectorId],
+          ["Id Tag", idTag],
+          ["Meter Value - Number Of Messages", meterValueNumberOfMessageField],
+          [
+            "Meter Value - Sample Interval In Seconds",
+            meterValueSampleIntervalField,
+          ],
+          ["Min SoC (percent)", minSocField],
+          ["Max SoC (percent)", maxSocField],
+          ["Min Energy (kWh)", minEnergyField],
+          ["Max Energy (kWh)", maxEnergyField],
+          ["Av Power (W)", avPowerField],
+          ["Av Current (A)", avCurrentField],
+          ["Status Notification", statusNotification],
+        ];
+        if (fieldsToCheck.map((e) => e[1] !== "").every((e) => e === true)) {
+          startTransaction();
+        } else {
+          let alertStr = "Please fill the following fields: ";
+          fieldsToCheck.forEach((e) => {
+            if (e[1] === "") alertStr += `${e[0]},`;
+          });
+          let alert = alertStr.slice(0, -1);
+          alert += ".";
+          window.alert(alert);
+        }
       });
 
       $("#stop").click(function () {
         onAction();
-        stopTransaction();
-        clearInterval(meterValueInterval);
+        const fieldsToCheck = [
+          ["Transaction Id", trxIdToStopField],
+          ["Id Tag", idTag],
+        ];
+        if (fieldsToCheck.map((e) => e[1] !== "").every((e) => e === true)) {
+          stopTransaction();
+          clearInterval(meterValueInterval);
+        } else {
+          let alertStr = "Please fill the following fields: ";
+          fieldsToCheck.forEach((e) => {
+            if (e[1] === "") alertStr += `${e[0]},`;
+          });
+          let alert = alertStr.slice(0, -1);
+          alert += ".";
+          window.alert(alert);
+        }
       });
 
       $("#start_meter_values").click(function () {
         onAction();
-        sessionStorage.setItem("LastAction", "MeterValues");
-        meterValuesArr = genrateMeterValues(
-          Number.parseInt($("#TransToStp").val()),
-          Number.parseInt($("#connectorId").val()),
-          Number.parseInt($("#meterValuesNumberOfMessages").val())
-        );
-        const meterValueSampleIntervalInSeconds = Number.parseInt(
-          $("#meterValueSampleIntervalInSeconds").val()
-        );
-        meterValueIndex = 0;
-        clearInterval(meterValueInterval);
-        meterValueInterval = setInterval(() => {
-          if (meterValueIndex < meterValuesArr.length) {
-            var meterValue = meterValuesArr[meterValueIndex];
-            meterValue.meterValue.forEach(
-              (e) => (e.timestamp = new Date().toISOString())
-            );
-            var MV = JSON.stringify([2, id, "MeterValues", meterValue]);
-            _websocket.send(MV);
-            meterValueIndex++;
-          } else {
-            meterValueIndex = 0;
-            clearInterval(meterValueInterval);
-          }
-        }, meterValueSampleIntervalInSeconds * 1000);
+        const fieldsToCheck = [
+          ["Connector Id", connectorId],
+          ["Transaction Id", trxIdToStopField],
+          ["Meter Value - Number Of Messages", meterValueNumberOfMessageField],
+          [
+            "Meter Value - Sample Interval In Seconds",
+            meterValueSampleIntervalField,
+          ],
+          ["Min SoC (percent)", minSocField],
+          ["Max SoC (percent)", maxSocField],
+          ["Min Energy (kWh)", minEnergyField],
+          ["Max Energy (kWh)", maxEnergyField],
+          ["Av Power (W)", avPowerField],
+          ["Av Current (A)", avCurrentField],
+        ];
+        if (fieldsToCheck.map((e) => e[1] !== "").every((e) => e === true)) {
+          sessionStorage.setItem("LastAction", "MeterValues");
+          meterValuesArr = genrateMeterValues(
+            Number.parseInt($("#TransToStp").val()),
+            Number.parseInt($("#connectorId").val()),
+            Number.parseInt($("#meterValuesNumberOfMessages").val())
+          );
+          const meterValueSampleIntervalInSeconds = Number.parseInt(
+            $("#meterValueSampleIntervalInSeconds").val()
+          );
+          clearInterval(meterValueInterval);
+          meterValueIndex = 0;
+          var firstMv = JSON.stringify([
+            2,
+            id,
+            "MeterValues",
+            meterValuesArr[meterValueIndex],
+          ]);
+          _websocket.send(firstMv);
+          meterValueIndex++;
+          meterValueInterval = setInterval(() => {
+            if (meterValueIndex < meterValuesArr.length) {
+              var meterValue = meterValuesArr[meterValueIndex];
+              meterValue.meterValue.forEach(
+                (e) => (e.timestamp = new Date().toISOString())
+              );
+              var MV = JSON.stringify([2, id, "MeterValues", meterValue]);
+              _websocket.send(MV);
+              meterValueIndex++;
+            } else {
+              meterValueIndex = 0;
+              clearInterval(meterValueInterval);
+            }
+          }, meterValueSampleIntervalInSeconds * 1000);
+        } else {
+          let alertStr = "Please fill the following fields: ";
+          fieldsToCheck.forEach((e) => {
+            if (e[1] === "") alertStr += `${e[0]},`;
+          });
+          let alert = alertStr.slice(0, -1);
+          alert += ".";
+          window.alert(alert);
+        }
       });
 
       $("#mv").click(function () {
@@ -832,24 +966,38 @@
 
       $("#status").click(function () {
         onAction();
-        sessionStorage.setItem("LastAction", "StatusNotification");
+        const fieldsToCheck = [
+          ["Connector Id", connectorId],
+          ["Status Notification", statusNotification],
+        ];
+        if (fieldsToCheck.map((e) => e[1] !== "").every((e) => e === true)) {
+          sessionStorage.setItem("LastAction", "StatusNotification");
 
-        var SN = JSON.stringify([
-          2,
-          id,
-          "StatusNotification",
-          {
-            connectorId: +connectorId,
-            status: statusNotification,
-            errorCode: "NoError",
-            info: "Electric vehicle info",
-            timestamp: formatDate(new Date()),
-            vendorId: "rus.avt.cp",
-            vendorErrorCode: "",
-          },
-        ]);
+          var SN = JSON.stringify([
+            2,
+            id,
+            "StatusNotification",
+            {
+              connectorId: +connectorId,
+              status: statusNotification,
+              errorCode: "NoError",
+              info: "Electric vehicle info",
+              timestamp: formatDate(new Date()),
+              vendorId: "rus.avt.cp",
+              vendorErrorCode: "",
+            },
+          ]);
 
-        _websocket.send(SN);
+          _websocket.send(SN);
+        } else {
+          let alertStr = "Please fill the following fields: ";
+          fieldsToCheck.forEach((e) => {
+            if (e[1] === "") alertStr += `${e[0]},`;
+          });
+          let alert = alertStr.slice(0, -1);
+          alert += ".";
+          window.alert(alert);
+        }
       });
 
       $("#data_transfer").click(function () {
