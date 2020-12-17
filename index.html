@@ -571,6 +571,10 @@
                   var TM = JSON.stringify([3, id, { status: "Accepted" }]);
                   _websocket.send(TM);
                   break;
+                case "GetDiagnostics":
+                  var GD = JSON.stringify([3, id, { "fileName": "abc.log" }]);
+                  _websocket.send(GD);
+                  break;
                 default:
                   var error = JSON.stringify([4, id]);
                   _websocket.send(error);
