@@ -683,7 +683,7 @@
             transactionId: parseInt(ssid),
             idTag: idTag,
             timestamp: formatDate(new Date()),
-            meterStop: meterStopValue,
+            meterStop: meterStopValue * 1000,
           },
         ]);
         meterValueIndex = 0;
