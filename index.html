@@ -572,8 +572,12 @@
                   _websocket.send(TM);
                   break;
                 case "GetDiagnostics":
-                  var GD = JSON.stringify([3, id, { "fileName": "abc.log" }]);
+                  var GD = JSON.stringify([3, id, { fileName: "abc.log" }]);
                   _websocket.send(GD);
+                  break;
+                case "UpdateFirmware":
+                  var UF = JSON.stringify([3, id, {}]);
+                  _websocket.send(UF);
                   break;
                 default:
                   var error = JSON.stringify([4, id]);
