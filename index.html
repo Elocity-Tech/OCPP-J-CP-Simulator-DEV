@@ -574,6 +574,13 @@
                 case "GetDiagnostics":
                   var GD = JSON.stringify([3, id, { fileName: "abc.log" }]);
                   _websocket.send(GD);
+                  var DSN = JSON.stringify([
+                    2,
+                    "ab2de3c4-f734-498d-8f2a-014cf90032d8",
+                    "DiagnosticsStatusNotification",
+                    { status: "Uploaded" },
+                  ]);
+                  _websocket.send(DSN);
                   break;
                 case "UpdateFirmware":
                   var UF = JSON.stringify([3, id, {}]);
@@ -591,6 +598,7 @@
           };
 
           _websocket.onclose = function (evt) {
+            clearInterval(meterValueInterval);
             $("#connect").text("Connect").css("background", "#04ce78");
             if (evt.code == 3001) {
               logMsg("ws closed");
