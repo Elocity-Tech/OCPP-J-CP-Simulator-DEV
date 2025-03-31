@@ -435,7 +435,7 @@
                   //Need idTag, connectorId (map - ddata[3])
                   var remStrt = JSON.stringify([3, id, { status: "Accepted" }]);
                   _websocket.send(remStrt);
-                  startTransaction();
+                  startTransaction(ddata[3]?.idTag);
                   break;
                 case "UnlockConnector":
                   //connectorId
@@ -563,7 +563,7 @@
         _websocket.send(Auth);
       }
 
-      function startTransaction() {
+      function startTransaction(serverIdTag = null) {
         onAction();
 
         sessionStorage.setItem("LastAction", "startTransaction");
@@ -577,7 +577,7 @@
           "StartTransaction",
           {
             connectorId: parseInt(connectorId),
-            idTag: idTag,
+            idTag: idTag == "" ? serverIdTag : idTag,
             timestamp: formatDate(new Date()),
             meterStart: Number.parseInt($("#minEnergy").val()),
             reservationId: 0,
