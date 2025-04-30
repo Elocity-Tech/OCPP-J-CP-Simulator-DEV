@@ -1,70 +1,77 @@
 <html>
-<head>
+  <head>
     <title>Multi ChargePoint Simulator</title>
     <!-- Keep existing JS includes -->
     <script type="text/javascript" src="assets/js/addclasskillclass.js"></script>
     <script type="text/javascript" src="assets/js/attachevent.js"></script>
     <script type="text/javascript" src="assets/js/addcss.js"></script>
-    <script type="text/javascript" src="assets/js/tabtastic.js"></script> <!-- For inner tabs -->
+    <script type="text/javascript" src="assets/js/tabtastic.js"></script>
+    <!-- For inner tabs -->
     <script src="https://unpkg.com/react@16/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@16/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/babel-standalone@6.15.0/babel.min.js"></script>
     <link rel="stylesheet" type="text/css" href="assets/css/main.css" />
     <style>
-        /* Style for the main simulator tabs */
-        .simulator-tabs {
-            list-style: none;
-            padding: 0;
-            margin: 0 0 10px 0;
-            border-bottom: 1px solid #ccc;
-            display: flex;
-        }
-        .simulator-tabs li {
-            margin-right: 5px;
-        }
-        .simulator-tabs a {
-            display: block;
-            padding: 8px 15px;
-            background: #eee;
-            border: 1px solid #ccc;
-            border-bottom: none;
-            text-decoration: none;
-            color: #333;
-            border-radius: 5px 5px 0 0;
-        }
-        .simulator-tabs a.active {
-            background: #fff;
-            border-bottom: 1px solid #fff; /* Cover the main border */
-            position: relative;
-            top: 1px; /* Align with content border */
-        }
-        .simulator-instance {
-            border: 1px solid #ccc;
-            padding: 15px;
-            margin-top: -1px; /* Overlap with tab border */
-        }
-        /* Style for inner tabs content */
-        .inner-content { display: none; }
-        .inner-content.active { display: block; }
+      /* Style for the main simulator tabs */
+      .simulator-tabs {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 10px 0;
+        border-bottom: 1px solid #ccc;
+        display: flex;
+      }
+      .simulator-tabs li {
+        margin-right: 5px;
+      }
+      .simulator-tabs a {
+        display: block;
+        padding: 8px 15px;
+        background: #eee;
+        border: 1px solid #ccc;
+        border-bottom: none;
+        text-decoration: none;
+        color: #333;
+        border-radius: 5px 5px 0 0;
+      }
+      .simulator-tabs a.active {
+        background: #fff;
+        border-bottom: 1px solid #fff; /* Cover the main border */
+        position: relative;
+        top: 1px; /* Align with content border */
+      }
+      .simulator-instance {
+        border: 1px solid #ccc;
+        padding: 15px;
+        margin-top: -1px; /* Overlap with tab border */
+      }
+      /* Style for inner tabs content */
+      .inner-content {
+        display: none;
+      }
+      .inner-content.active {
+        display: block;
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
     <!-- Main Tabs Container -->
     <ul id="simulator-tabs" class="simulator-tabs">
-        <!-- Tabs will be generated here by JS -->
+      <!-- Tabs will be generated here by JS -->
     </ul>
 
     <!-- Container for Simulator Instances -->
     <div id="simulator-container">
-        <!-- Simulator content panes will be generated here by JS -->
+      <!-- Simulator content panes will be generated here by JS -->
     </div>
 
     <!-- Global Time Display (Optional) -->
-    <div id="root_time" style="margin-top: 20px; text-align: center;"></div>
+    <div id="root_time" style="margin-top: 20px; text-align: center"></div>
 
-    <script src="https://code.jquery.com/jquery-3.3.1.min.js"
-            integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8="
-            crossorigin="anonymous"></script>
+    <script
+      src="https://code.jquery.com/jquery-3.3.1.min.js"
+      integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8="
+      crossorigin="anonymous"
+    ></script>
 
     <script type="text/babel">
       // Keep the React clock if desired - it's independent
@@ -74,1133 +81,1309 @@
             <p>Time on local machine: {new Date().toLocaleTimeString()}</p>
           </div>
         );
-        ReactDOM.render(element, document.getElementById('root_time'));
+        ReactDOM.render(element, document.getElementById("root_time"));
       }
       setInterval(tick, 1000);
     </script>
 
     <script>
-        // =============================================
-        // Simulator Class Definition
-        // =============================================
-        class Simulator {
-            constructor(id, containerElement) {
-                this.id = id; // e.g., 1, 2, 3, 4
-                this.container = containerElement; // The div holding this simulator's UI
-                this.config = {}; // Will hold settings like endpoint, cpId, etc.
-                this.state = {
-                    websocket: null,
-                    isConnected: false,
-                    lastSentAction: null,
-                    heartbeatIntervalId: null,
-                    meterValueIntervalId: null,
-                    meterValuesArr: null,
-                    meterValueIndex: 0,
-                    currentTransactionId: null,
-                    isResuming: false, // Flag to indicate if we loaded persisted state
-                    messageCounter: 0, // Simple counter for unique message IDs
-                    activeTransactions: [] // Store transaction IDs for display
-                };
-                this.uiElements = {}; // References to DOM elements for this instance
+      // =============================================
+      // Simulator Class Definition
+      // =============================================
+      class Simulator {
+        constructor(id, containerElement) {
+          this.id = id; // e.g., 1, 2, 3, 4
+          this.container = containerElement; // The div holding this simulator's UI
+          this.config = {}; // Will hold settings like endpoint, cpId, etc.
+          this.state = {
+            websocket: null,
+            isConnected: false,
+            lastSentAction: null,
+            heartbeatIntervalId: null,
+            meterValueIntervalId: null,
+            meterValuesArr: null,
+            meterValueIndex: 0,
+            currentTransactionId: null,
+            isResuming: false, // Flag to indicate if we loaded persisted state
+            messageCounter: 0, // Simple counter for unique message IDs
+            activeTransactions: [], // Store transaction IDs for display
+          };
+          this.uiElements = {}; // References to DOM elements for this instance
 
-                this._bindUIElements();
-                this.loadConfigFromUI(); // Load initial values from HTML
-                this._bindUIEvents();
-                this.updateIndicator('red'); // Start as disconnected
-                this.loadPersistedState(); // Check localStorage on initialization
-                this.updateTransactionsUI(); // Display any loaded transactions
+          this._bindUIElements();
+          this.loadConfigFromUI(); // Load initial values from HTML
+          this._bindUIEvents();
+          this.updateIndicator("red"); // Start as disconnected
+          this.loadPersistedState(); // Check localStorage on initialization
+          this.updateTransactionsUI(); // Display any loaded transactions
+        }
+
+        // --- Private Helper Methods ---
+
+        _generateUniqueId() {
+          // Simple unique ID for OCPP messages (could be more robust)
+          return `msg-${this.id}-${Date.now()}-${this.state.messageCounter++}`;
+        }
+
+        _bindUIElements() {
+          // Find all relevant elements within this simulator's container
+          this.uiElements.connectButton = this.container.querySelector(`#connect-${this.id}`);
+          this.uiElements.authorizeButton = this.container.querySelector(`#send-${this.id}`);
+          this.uiElements.startButton = this.container.querySelector(`#start-${this.id}`);
+          this.uiElements.stopButton = this.container.querySelector(`#stop-${this.id}`);
+          this.uiElements.heartbeatButton = this.container.querySelector(`#heartbeat-${this.id}`);
+          this.uiElements.statusButton = this.container.querySelector(`#status-${this.id}`);
+          this.uiElements.dataTransferButton = this.container.querySelector(
+            `#data_transfer-${this.id}`
+          );
+          // *** ADDED METER VALUE BUTTONS ***
+          this.uiElements.startMeterValuesButton = this.container.querySelector(
+            `#start-meter-values-${this.id}`
+          );
+          this.uiElements.resumeMeterValuesButton = this.container.querySelector(
+            `#resume-meter-values-${this.id}`
+          );
+          // Inputs
+          this.uiElements.connectorIdInput = this.container.querySelector(
+            `#connectorId-${this.id}`
+          );
+          this.uiElements.transToStpInput = this.container.querySelector(`#TransToStp-${this.id}`);
+          this.uiElements.endpointInput = this.container.querySelector(`#endp-${this.id}`);
+          this.uiElements.cpIdInput = this.container.querySelector(`#CP-${this.id}`);
+          this.uiElements.vendorInput = this.container.querySelector(
+            `#chargePointVendor-${this.id}`
+          );
+          this.uiElements.modelInput = this.container.querySelector(`#chargePointModel-${this.id}`);
+          this.uiElements.idTagInput = this.container.querySelector(`#idTag-${this.id}`);
+          this.uiElements.statusNotificationInput = this.container.querySelector(
+            `#statusNotification-${this.id}`
+          );
+          this.uiElements.meterNumMessagesInput = this.container.querySelector(
+            `#meterValuesNumberOfMessages-${this.id}`
+          );
+          this.uiElements.meterIntervalInput = this.container.querySelector(
+            `#meterValueSampleIntervalInSeconds-${this.id}`
+          );
+          this.uiElements.minSocInput = this.container.querySelector(`#minSoc-${this.id}`);
+          this.uiElements.maxSocInput = this.container.querySelector(`#maxSoc-${this.id}`);
+          this.uiElements.minEnergyInput = this.container.querySelector(`#minEnergy-${this.id}`);
+          this.uiElements.maxEnergyInput = this.container.querySelector(`#maxEnergy-${this.id}`);
+          this.uiElements.avPowerInput = this.container.querySelector(`#avPower-${this.id}`);
+          this.uiElements.avCurrentInput = this.container.querySelector(`#avCurrent-${this.id}`);
+          this.uiElements.dataTransferInput = this.container.querySelector(
+            `#datatrasfer-${this.id}`
+          ); // Assuming you add this input
+          // Indicators
+          this.uiElements.redIndicator = this.container.querySelector(`#red-${this.id}`);
+          this.uiElements.greenIndicator = this.container.querySelector(`#green-${this.id}`);
+          this.uiElements.yellowIndicator = this.container.querySelector(`#yellow-${this.id}`);
+          this.uiElements.blueIndicator = this.container.querySelector(`#blue-${this.id}`);
+          // Log and Transactions Area
+          this.uiElements.logArea = this.container.querySelector(`#console-${this.id}`);
+          this.uiElements.transactionsArea = this.container.querySelector(
+            `#transactions-${this.id}`
+          );
+        }
+
+        _bindUIEvents() {
+          // Use arrow functions to maintain 'this' context
+          this.uiElements.connectButton.addEventListener("click", () => this.connect());
+          this.uiElements.authorizeButton.addEventListener("click", () => this.authorize());
+          this.uiElements.startButton.addEventListener("click", () => this.startTransaction());
+          this.uiElements.stopButton.addEventListener("click", () => this.stopTransaction());
+          this.uiElements.heartbeatButton.addEventListener("click", () => this.sendHeartbeat());
+          this.uiElements.statusButton.addEventListener("click", () =>
+            this.sendStatusNotificationFromInput()
+          );
+          this.uiElements.dataTransferButton.addEventListener("click", () =>
+            this.sendDataTransfer()
+          );
+          // *** ADDED METER VALUE BUTTON LISTENERS ***
+          this.uiElements.startMeterValuesButton.addEventListener("click", () =>
+            this.startSendingMeterValues(false)
+          ); // false = start new
+          this.uiElements.resumeMeterValuesButton.addEventListener("click", () =>
+            this.startSendingMeterValues(true)
+          ); // true = resume
+
+          // Update config object when inputs change (optional, or do it on action)
+          const inputs = this.container.querySelectorAll('input[type="text"]');
+          inputs.forEach((input) => {
+            input.addEventListener("change", () => this.loadConfigFromUI());
+          });
+        }
+
+        _getPersistenceKey() {
+          // Use Charge Point ID for storing state
+          const cpId = this.config.chargePointId;
+          return cpId ? `simulatorState_${cpId}` : null;
+        }
+
+        // --- Public Methods ---
+
+        log(message) {
+          console.log(`[Sim ${this.id}] ${message}`);
+          const li = document.createElement("li");
+          li.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+          this.uiElements.logArea.appendChild(li);
+          // Auto-scroll (optional)
+          this.uiElements.logArea.scrollTop = this.uiElements.logArea.scrollHeight;
+        }
+
+        updateIndicator(color) {
+          this.uiElements.redIndicator.style.display = "none";
+          this.uiElements.greenIndicator.style.display = "none";
+          this.uiElements.yellowIndicator.style.display = "none";
+          this.uiElements.blueIndicator.style.display = "none";
+          if (this.uiElements[`${color}Indicator`]) {
+            this.uiElements[`${color}Indicator`].style.display = "inline-block";
+          }
+        }
+
+        loadConfigFromUI() {
+          this.config = {
+            connectorId: parseInt(this.uiElements.connectorIdInput.value) || 1,
+            transactionIdToStop: parseInt(this.uiElements.transToStpInput.value) || null,
+            endpointUrl: this.uiElements.endpointInput.value.trim(),
+            chargePointId: this.uiElements.cpIdInput.value.trim(),
+            chargePointVendor: this.uiElements.vendorInput.value.trim(),
+            chargePointModel: this.uiElements.modelInput.value.trim(),
+            idTag: this.uiElements.idTagInput.value.trim(),
+            statusNotification: this.uiElements.statusNotificationInput.value.trim() || "Available",
+            meterNumMessages: parseInt(this.uiElements.meterNumMessagesInput.value) || 100,
+            meterSampleInterval: parseInt(this.uiElements.meterIntervalInput.value) || 10,
+            minSoc: parseInt(this.uiElements.minSocInput.value) || 3,
+            maxSoc: parseInt(this.uiElements.maxSocInput.value) || 100,
+            minEnergy: parseInt(this.uiElements.minEnergyInput.value) || 0,
+            maxEnergy: parseInt(this.uiElements.maxEnergyInput.value) || 20,
+            avPower: parseInt(this.uiElements.avPowerInput.value) || 7000,
+            avCurrent: parseInt(this.uiElements.avCurrentInput.value) || 21,
+            dataTransferData: this.uiElements.dataTransferInput
+              ? this.uiElements.dataTransferInput.value.trim()
+              : "",
+            // Add other config fields as needed
+          };
+          // Update transactionIdToStop if the input is empty but a transaction is active
+          if (!this.config.transactionIdToStop && this.state.currentTransactionId) {
+            this.config.transactionIdToStop = this.state.currentTransactionId;
+            this.uiElements.transToStpInput.value = this.state.currentTransactionId;
+          }
+        }
+
+        validateFields(fieldNames) {
+          this.loadConfigFromUI(); // Ensure config is up-to-date
+          const missing = [];
+          fieldNames.forEach((fieldName) => {
+            if (!this.config[fieldName] && this.config[fieldName] !== 0) {
+              // Check for empty strings, null, undefined (allow 0)
+              // Convert camelCase to readable name (simple version)
+              const readableName = fieldName
+                .replace(/([A-Z])/g, " $1")
+                .replace(/^./, (str) => str.toUpperCase());
+              missing.push(readableName);
+            }
+          });
+          if (missing.length > 0) {
+            alert(`Simulator ${this.id}: Please fill the following fields: ${missing.join(", ")}.`);
+            return false;
+          }
+          return true;
+        }
+
+        // --- Persistence Methods ---
+
+        loadPersistedState() {
+          const key = this._getPersistenceKey();
+          if (!key) return;
+
+          const persistedData = localStorage.getItem(key);
+          if (persistedData) {
+            try {
+              const parsed = JSON.parse(persistedData);
+              if (parsed.currentTransactionId) {
+                this.state.currentTransactionId = parsed.currentTransactionId;
+                this.state.meterValuesArr = parsed.meterValuesArr;
+                this.state.meterValueIndex = parsed.meterValueIndex || 0;
+                // Load config values that affect meter sending from persisted state
+                this.config.meterSampleInterval =
+                  parsed.meterSampleInterval || this.config.meterSampleInterval;
+                this.config.meterNumMessages = parsed.meterValuesArr
+                  ? parsed.meterValuesArr.length
+                  : this.config.meterNumMessages;
+                // Also load other relevant config if needed (min/max soc/energy etc) - depends if they should be persisted
+                this.state.isResuming = true; // Mark for resumption check on connect
+                this.state.activeTransactions = parsed.activeTransactions || [
+                  parsed.currentTransactionId,
+                ]; // Restore list
+
+                // Update UI to reflect loaded state
+                this.uiElements.transToStpInput.value = this.state.currentTransactionId;
+                this.uiElements.meterIntervalInput.value = this.config.meterSampleInterval;
+                this.uiElements.meterNumMessagesInput.value = this.config.meterNumMessages;
+                // Update other UI fields if their config was loaded from persistence
+
+                this.log(
+                  `Loaded persisted charging state for Tx: ${this.state.currentTransactionId}, next meter index: ${this.state.meterValueIndex}`
+                );
+              } else {
+                this.log("No active transaction found in persisted state.");
+                this.state.activeTransactions = []; // Ensure list is empty if no tx loaded
+              }
+            } catch (e) {
+              this.log(`Error parsing persisted state: ${e}. Clearing.`);
+              localStorage.removeItem(key);
+              this.state.activeTransactions = [];
+            }
+          } else {
+            this.log("No persisted state found.");
+            this.state.activeTransactions = [];
+          }
+        }
+
+        persistState() {
+          const key = this._getPersistenceKey();
+          if (!key) return;
+
+          if (this.state.currentTransactionId && this.state.meterValuesArr) {
+            const stateToPersist = {
+              currentTransactionId: this.state.currentTransactionId,
+              meterValuesArr: this.state.meterValuesArr, // The generated array
+              meterValueIndex: this.state.meterValueIndex, // Next index to send
+              meterSampleInterval: this.config.meterSampleInterval, // Interval used
+              // Persist other config used for generation? Optional.
+              // minSoc: this.config.minSoc, maxSoc: this.config.maxSoc, ...
+              activeTransactions: this.state.activeTransactions, // List of active Tx IDs
+            };
+            localStorage.setItem(key, JSON.stringify(stateToPersist));
+            this.log(
+              `Persisted state for Tx ${this.state.currentTransactionId} at index ${this.state.meterValueIndex}`
+            );
+          } else {
+            // If no active transaction, ensure persisted state is cleared
+            this.clearPersistedState();
+          }
+        }
+
+        clearPersistedState() {
+          const key = this._getPersistenceKey();
+          if (key) {
+            // Only remove if it exists, prevents unnecessary log messages
+            if (localStorage.getItem(key)) {
+              localStorage.removeItem(key);
+              this.log(`Cleared persisted state for CP ${this.config.chargePointId}`);
+            }
+          }
+        }
+
+        // --- WebSocket and OCPP Methods ---
+
+        connect() {
+          this.loadConfigFromUI(); // Load latest config from UI
+          if (
+            !this.validateFields([
+              "endpointUrl",
+              "chargePointId",
+              "chargePointVendor",
+              "chargePointModel",
+            ])
+          ) {
+            return;
+          }
+
+          if (this.state.websocket) {
+            this.log("Disconnecting...");
+            this.disconnect(3001); // User initiated disconnect
+            return;
+          }
+
+          // Load persisted state *again* right before connecting, using the potentially updated CP ID
+          this.loadPersistedState();
+          this.updateTransactionsUI(); // Update UI based on loaded state
+
+          const url = `${this.config.endpointUrl}${this.config.chargePointId}`;
+          this.log(`Connecting to ${url}...`);
+          this.updateIndicator("blue"); // Connecting status
+          this.uiElements.connectButton.textContent = "Connecting...";
+          this.uiElements.connectButton.disabled = true; // Prevent double clicks
+
+          try {
+            this.state.websocket = new WebSocket(url, ["ocpp1.6", "ocpp1.5"]);
+          } catch (e) {
+            this.log(`Error creating WebSocket: ${e}`);
+            this.updateIndicator("red");
+            this.uiElements.connectButton.textContent = "Connect";
+            this.uiElements.connectButton.disabled = false;
+            return;
+          }
+
+          this.state.websocket.onopen = (event) => {
+            this.log("WebSocket Opened");
+            this.state.isConnected = true;
+            this.uiElements.connectButton.textContent = "Disconnect";
+            this.uiElements.connectButton.disabled = false;
+            this.updateIndicator("yellow"); // Connected, waiting for Boot response
+            this.sendBootNotification();
+          };
+
+          this.state.websocket.onmessage = (event) => {
+            this.handleMessage(event.data);
+          };
+
+          this.state.websocket.onclose = (event) => {
+            this.log(`WebSocket Closed: Code=${event.code}, Reason=${event.reason || "N/A"}`);
+            this.state.isConnected = false;
+            this.state.websocket = null;
+            clearInterval(this.state.heartbeatIntervalId);
+            this.state.heartbeatIntervalId = null;
+
+            // If the disconnect was clean (user clicked disconnect), stop meter interval.
+            // If it was unexpected, leave the interval state alone (it should be null anyway
+            // unless it failed mid-send), but ensure state is persisted if charging.
+            if (event.code === 3001) {
+              // Clean disconnect by user
+              clearInterval(this.state.meterValueIntervalId);
+              this.state.meterValueIntervalId = null;
+              // Persist state on clean disconnect *if* a transaction was active
+              if (this.state.currentTransactionId) {
+                this.persistState();
+              }
+            } else {
+              // Unexpected disconnect
+              // Stop the interval timer if it happens to be running (unlikely but safe)
+              clearInterval(this.state.meterValueIntervalId);
+              this.state.meterValueIntervalId = null;
+              // Ensure state is persisted if a transaction was active
+              if (this.state.currentTransactionId) {
+                this.persistState();
+                this.log("Unexpected disconnect. Persisted active transaction state.");
+              } else {
+                this.log("Unexpected disconnect. No active transaction to persist.");
+              }
             }
 
-            // --- Private Helper Methods ---
+            this.uiElements.connectButton.textContent = "Connect";
+            this.uiElements.connectButton.disabled = false;
+            this.updateIndicator("red"); // Disconnected status
 
-            _generateUniqueId() {
-                // Simple unique ID for OCPP messages (could be more robust)
-                return `msg-${this.id}-${Date.now()}-${this.state.messageCounter++}`;
+            // Optional: Implement automatic reconnection logic here for non-clean disconnects
+          };
+
+          this.state.websocket.onerror = (event) => {
+            this.log(`WebSocket Error: ${event.type || "Unknown error"}`);
+            // Update UI, maybe try reconnecting depending on the error
+            this.updateIndicator("red");
+            this.uiElements.connectButton.textContent = "Connect";
+            this.uiElements.connectButton.disabled = false;
+            // Consider calling the onclose logic here too for cleanup
+            // this.state.websocket?.close(); // Force close if error didn't trigger it
+          };
+        }
+
+        disconnect(code = 1000) {
+          // 1000 = Normal closure
+          if (this.state.websocket) {
+            // Stop sending meter values *before* closing
+            clearInterval(this.state.meterValueIntervalId);
+            this.state.meterValueIntervalId = null;
+
+            // Persist state *before* disconnecting if currently charging
+            if (this.state.currentTransactionId) {
+              this.persistState();
             }
 
-            _bindUIElements() {
-                // Find all relevant elements within this simulator's container
-                this.uiElements.connectButton = this.container.querySelector(`#connect-${this.id}`);
-                this.uiElements.authorizeButton = this.container.querySelector(`#send-${this.id}`);
-                this.uiElements.startButton = this.container.querySelector(`#start-${this.id}`);
-                this.uiElements.stopButton = this.container.querySelector(`#stop-${this.id}`);
-                this.uiElements.heartbeatButton = this.container.querySelector(`#heartbeat-${this.id}`);
-                this.uiElements.statusButton = this.container.querySelector(`#status-${this.id}`);
-                this.uiElements.dataTransferButton = this.container.querySelector(`#data_transfer-${this.id}`);
-                // *** ADDED METER VALUE BUTTONS ***
-                this.uiElements.startMeterValuesButton = this.container.querySelector(`#start-meter-values-${this.id}`);
-                this.uiElements.resumeMeterValuesButton = this.container.querySelector(`#resume-meter-values-${this.id}`);
-                // Inputs
-                this.uiElements.connectorIdInput = this.container.querySelector(`#connectorId-${this.id}`);
-                this.uiElements.transToStpInput = this.container.querySelector(`#TransToStp-${this.id}`);
-                this.uiElements.endpointInput = this.container.querySelector(`#endp-${this.id}`);
-                this.uiElements.cpIdInput = this.container.querySelector(`#CP-${this.id}`);
-                this.uiElements.vendorInput = this.container.querySelector(`#chargePointVendor-${this.id}`);
-                this.uiElements.modelInput = this.container.querySelector(`#chargePointModel-${this.id}`);
-                this.uiElements.idTagInput = this.container.querySelector(`#idTag-${this.id}`);
-                this.uiElements.statusNotificationInput = this.container.querySelector(`#statusNotification-${this.id}`);
-                this.uiElements.meterNumMessagesInput = this.container.querySelector(`#meterValuesNumberOfMessages-${this.id}`);
-                this.uiElements.meterIntervalInput = this.container.querySelector(`#meterValueSampleIntervalInSeconds-${this.id}`);
-                this.uiElements.minSocInput = this.container.querySelector(`#minSoc-${this.id}`);
-                this.uiElements.maxSocInput = this.container.querySelector(`#maxSoc-${this.id}`);
-                this.uiElements.minEnergyInput = this.container.querySelector(`#minEnergy-${this.id}`);
-                this.uiElements.maxEnergyInput = this.container.querySelector(`#maxEnergy-${this.id}`);
-                this.uiElements.avPowerInput = this.container.querySelector(`#avPower-${this.id}`);
-                this.uiElements.avCurrentInput = this.container.querySelector(`#avCurrent-${this.id}`);
-                this.uiElements.dataTransferInput = this.container.querySelector(`#datatrasfer-${this.id}`); // Assuming you add this input
-                // Indicators
-                this.uiElements.redIndicator = this.container.querySelector(`#red-${this.id}`);
-                this.uiElements.greenIndicator = this.container.querySelector(`#green-${this.id}`);
-                this.uiElements.yellowIndicator = this.container.querySelector(`#yellow-${this.id}`);
-                this.uiElements.blueIndicator = this.container.querySelector(`#blue-${this.id}`);
-                // Log and Transactions Area
-                this.uiElements.logArea = this.container.querySelector(`#console-${this.id}`);
-                this.uiElements.transactionsArea = this.container.querySelector(`#transactions-${this.id}`);
+            this.state.websocket.close(code);
+            // onclose handler will manage UI updates and state cleanup
+          } else {
+            // If already disconnected, ensure UI is correct
+            this.state.isConnected = false;
+            this.uiElements.connectButton.textContent = "Connect";
+            this.uiElements.connectButton.disabled = false;
+            this.updateIndicator("red");
+            clearInterval(this.state.heartbeatIntervalId);
+            this.state.heartbeatIntervalId = null;
+            clearInterval(this.state.meterValueIntervalId);
+            this.state.meterValueIntervalId = null;
+          }
+        }
+
+        sendRequest(action, payload) {
+          if (!this.state.websocket || this.state.websocket.readyState !== WebSocket.OPEN) {
+            this.log(`Cannot send ${action}: WebSocket not open.`);
+            return false; // Indicate failure
+          }
+          const messageId = this._generateUniqueId();
+          const message = [2, messageId, action, payload];
+          const jsonMessage = JSON.stringify(message);
+          this.log(`TX: ${jsonMessage}`);
+          this.state.lastSentAction = action; // Track for response handling
+          this.state.websocket.send(jsonMessage);
+          return true; // Indicate success
+        }
+
+        sendResponse(messageId, payload) {
+          if (!this.state.websocket || this.state.websocket.readyState !== WebSocket.OPEN) {
+            this.log(`Cannot send response: WebSocket not open.`);
+            return;
+          }
+          const message = [3, messageId, payload];
+          const jsonMessage = JSON.stringify(message);
+          this.log(`TX Response: ${jsonMessage}`);
+          this.state.websocket.send(jsonMessage);
+        }
+
+        sendError(messageId, errorCode, errorDescription = "", errorDetails = {}) {
+          if (!this.state.websocket || this.state.websocket.readyState !== WebSocket.OPEN) {
+            this.log(`Cannot send error: WebSocket not open.`);
+            return;
+          }
+          const message = [4, messageId, errorCode, errorDescription, errorDetails];
+          const jsonMessage = JSON.stringify(message);
+          this.log(`TX Error: ${jsonMessage}`);
+          this.state.websocket.send(jsonMessage);
+        }
+
+        handleMessage(jsonData) {
+          this.log(`RX: ${jsonData}`);
+          try {
+            const msg = JSON.parse(jsonData);
+            const messageTypeId = msg[0];
+            const messageId = msg[1];
+
+            if (messageTypeId === 3) {
+              // CallResult (Response to our request)
+              const payload = msg[2];
+              this.handleCallResult(this.state.lastSentAction, messageId, payload); // Pass messageId
+            } else if (messageTypeId === 2) {
+              // Call (Command from server)
+              const action = msg[2];
+              const payload = msg[3];
+              this.handleCall(messageId, action, payload);
+            } else if (messageTypeId === 4) {
+              // CallError (Error response from server)
+              const errorCode = msg[2];
+              const errorDescription = msg[3];
+              const errorDetails = msg[4];
+              this.handleCallError(
+                this.state.lastSentAction,
+                messageId,
+                errorCode,
+                errorDescription,
+                errorDetails
+              ); // Pass messageId
             }
+          } catch (e) {
+            this.log(`Error processing message: ${e}`);
+            this.log(`Raw data: ${jsonData}`);
+          }
+        }
 
-            _bindUIEvents() {
-                // Use arrow functions to maintain 'this' context
-                this.uiElements.connectButton.addEventListener('click', () => this.connect());
-                this.uiElements.authorizeButton.addEventListener('click', () => this.authorize());
-                this.uiElements.startButton.addEventListener('click', () => this.startTransaction());
-                this.uiElements.stopButton.addEventListener('click', () => this.stopTransaction());
-                this.uiElements.heartbeatButton.addEventListener('click', () => this.sendHeartbeat());
-                this.uiElements.statusButton.addEventListener('click', () => this.sendStatusNotificationFromInput());
-                this.uiElements.dataTransferButton.addEventListener('click', () => this.sendDataTransfer());
-                // *** ADDED METER VALUE BUTTON LISTENERS ***
-                this.uiElements.startMeterValuesButton.addEventListener('click', () => this.startSendingMeterValues(false)); // false = start new
-                this.uiElements.resumeMeterValuesButton.addEventListener('click', () => this.startSendingMeterValues(true)); // true = resume
+        handleCallResult(action, messageId, payload) {
+          // Added messageId
+          this.log(
+            `Response received for ${action} (ID: ${messageId}): ${JSON.stringify(payload)}`
+          );
+          switch (action) {
+            case "BootNotification":
+              if (payload.status === "Accepted") {
+                const interval = payload.interval;
+                this.log(
+                  `Boot successful. Heartbeat interval: ${interval}s. Current time: ${payload.currentTime}`
+                );
+                this.startHeartbeat(interval * 1000);
+                this.updateIndicator("yellow"); // Available
 
-                // Update config object when inputs change (optional, or do it on action)
-                const inputs = this.container.querySelectorAll('input[type="text"]');
-                inputs.forEach(input => {
-                    input.addEventListener('change', () => this.loadConfigFromUI());
-                });
-            }
-
-            _getPersistenceKey() {
-                // Use Charge Point ID for storing state
-                const cpId = this.config.chargePointId;
-                return cpId ? `simulatorState_${cpId}` : null;
-            }
-
-            // --- Public Methods ---
-
-            log(message) {
-                console.log(`[Sim ${this.id}] ${message}`);
-                const li = document.createElement('li');
-                li.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-                this.uiElements.logArea.appendChild(li);
-                // Auto-scroll (optional)
-                this.uiElements.logArea.scrollTop = this.uiElements.logArea.scrollHeight;
-            }
-
-            updateIndicator(color) {
-                this.uiElements.redIndicator.style.display = 'none';
-                this.uiElements.greenIndicator.style.display = 'none';
-                this.uiElements.yellowIndicator.style.display = 'none';
-                this.uiElements.blueIndicator.style.display = 'none';
-                if (this.uiElements[`${color}Indicator`]) {
-                    this.uiElements[`${color}Indicator`].style.display = 'inline-block';
-                }
-            }
-
-            loadConfigFromUI() {
-                this.config = {
-                    connectorId: parseInt(this.uiElements.connectorIdInput.value) || 1,
-                    transactionIdToStop: parseInt(this.uiElements.transToStpInput.value) || null,
-                    endpointUrl: this.uiElements.endpointInput.value.trim(),
-                    chargePointId: this.uiElements.cpIdInput.value.trim(),
-                    chargePointVendor: this.uiElements.vendorInput.value.trim(),
-                    chargePointModel: this.uiElements.modelInput.value.trim(),
-                    idTag: this.uiElements.idTagInput.value.trim(),
-                    statusNotification: this.uiElements.statusNotificationInput.value.trim() || 'Available',
-                    meterNumMessages: parseInt(this.uiElements.meterNumMessagesInput.value) || 100,
-                    meterSampleInterval: parseInt(this.uiElements.meterIntervalInput.value) || 10,
-                    minSoc: parseInt(this.uiElements.minSocInput.value) || 3,
-                    maxSoc: parseInt(this.uiElements.maxSocInput.value) || 100,
-                    minEnergy: parseInt(this.uiElements.minEnergyInput.value) || 0,
-                    maxEnergy: parseInt(this.uiElements.maxEnergyInput.value) || 20,
-                    avPower: parseInt(this.uiElements.avPowerInput.value) || 7000,
-                    avCurrent: parseInt(this.uiElements.avCurrentInput.value) || 21,
-                    dataTransferData: this.uiElements.dataTransferInput ? this.uiElements.dataTransferInput.value.trim() : ""
-                    // Add other config fields as needed
-                };
-                 // Update transactionIdToStop if the input is empty but a transaction is active
-                if (!this.config.transactionIdToStop && this.state.currentTransactionId) {
-                    this.config.transactionIdToStop = this.state.currentTransactionId;
-                    this.uiElements.transToStpInput.value = this.state.currentTransactionId;
-                }
-            }
-
-            validateFields(fieldNames) {
-                this.loadConfigFromUI(); // Ensure config is up-to-date
-                const missing = [];
-                fieldNames.forEach(fieldName => {
-                    if (!this.config[fieldName] && this.config[fieldName] !== 0) { // Check for empty strings, null, undefined (allow 0)
-                        // Convert camelCase to readable name (simple version)
-                        const readableName = fieldName.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
-                        missing.push(readableName);
-                    }
-                });
-                if (missing.length > 0) {
-                    alert(`Simulator ${this.id}: Please fill the following fields: ${missing.join(', ')}.`);
-                    return false;
-                }
-                return true;
-            }
-
-            // --- Persistence Methods ---
-
-            loadPersistedState() {
-                const key = this._getPersistenceKey();
-                if (!key) return;
-
-                const persistedData = localStorage.getItem(key);
-                if (persistedData) {
-                    try {
-                        const parsed = JSON.parse(persistedData);
-                        if (parsed.currentTransactionId) {
-                            this.state.currentTransactionId = parsed.currentTransactionId;
-                            this.state.meterValuesArr = parsed.meterValuesArr;
-                            this.state.meterValueIndex = parsed.meterValueIndex || 0;
-                            // Load config values that affect meter sending from persisted state
-                            this.config.meterSampleInterval = parsed.meterSampleInterval || this.config.meterSampleInterval;
-                            this.config.meterNumMessages = parsed.meterValuesArr ? parsed.meterValuesArr.length : this.config.meterNumMessages;
-                            // Also load other relevant config if needed (min/max soc/energy etc) - depends if they should be persisted
-                            this.state.isResuming = true; // Mark for resumption check on connect
-                            this.state.activeTransactions = parsed.activeTransactions || [parsed.currentTransactionId]; // Restore list
-
-                            // Update UI to reflect loaded state
-                            this.uiElements.transToStpInput.value = this.state.currentTransactionId;
-                            this.uiElements.meterIntervalInput.value = this.config.meterSampleInterval;
-                            this.uiElements.meterNumMessagesInput.value = this.config.meterNumMessages;
-                            // Update other UI fields if their config was loaded from persistence
-
-                            this.log(`Loaded persisted charging state for Tx: ${this.state.currentTransactionId}, next meter index: ${this.state.meterValueIndex}`);
-                        } else {
-                            this.log("No active transaction found in persisted state.");
-                            this.state.activeTransactions = []; // Ensure list is empty if no tx loaded
-                        }
-                    } catch (e) {
-                        this.log(`Error parsing persisted state: ${e}. Clearing.`);
-                        localStorage.removeItem(key);
-                        this.state.activeTransactions = [];
-                    }
+                // *** RESUMPTION LOGIC ***
+                if (
+                  this.state.isResuming &&
+                  this.state.currentTransactionId &&
+                  this.state.meterValuesArr
+                ) {
+                  this.log(
+                    `Attempting to resume transaction ${this.state.currentTransactionId} from index ${this.state.meterValueIndex}`
+                  );
+                  // Send StatusNotification Charging to confirm state
+                  this.sendStatusNotification("Charging");
+                  // *** NOTE: Removed automatic startSendingMeterValues here. Use Resume button or keep it if preferred. ***
+                  // this.startSendingMeterValues(true); // true = resume
+                  this.updateIndicator("green"); // Show charging (since we loaded a charging state)
+                  this.log(
+                    "Resumed charging state loaded. Use 'Resume Meter Values' button to continue sending."
+                  );
                 } else {
-                     this.log("No persisted state found.");
-                     this.state.activeTransactions = [];
+                  // Not resuming, send initial status based on config
+                  this.sendStatusNotification(this.config.statusNotification || "Available");
                 }
-            }
+                this.state.isResuming = false; // Clear resume flag after check
+              } else {
+                this.log(`BootNotification rejected: ${payload.status}. Retrying? Closing?`);
+                // Handle rejection (e.g., close connection, retry after delay)
+                this.disconnect();
+              }
+              break;
 
-            persistState() {
-                const key = this._getPersistenceKey();
-                if (!key) return;
+            case "Authorize":
+              this.log(`Authorization status: ${payload.idTagInfo.status}`);
+              // Can update UI or trigger next step based on status
+              break;
 
-                if (this.state.currentTransactionId && this.state.meterValuesArr) {
-                    const stateToPersist = {
-                        currentTransactionId: this.state.currentTransactionId,
-                        meterValuesArr: this.state.meterValuesArr, // The generated array
-                        meterValueIndex: this.state.meterValueIndex, // Next index to send
-                        meterSampleInterval: this.config.meterSampleInterval, // Interval used
-                        // Persist other config used for generation? Optional.
-                        // minSoc: this.config.minSoc, maxSoc: this.config.maxSoc, ...
-                        activeTransactions: this.state.activeTransactions // List of active Tx IDs
-                    };
-                    localStorage.setItem(key, JSON.stringify(stateToPersist));
-                    this.log(`Persisted state for Tx ${this.state.currentTransactionId} at index ${this.state.meterValueIndex}`);
+            case "StartTransaction":
+              if (payload.idTagInfo && payload.idTagInfo.status === "Accepted") {
+                this.state.currentTransactionId = payload.transactionId;
+                this.log(`Transaction ${this.state.currentTransactionId} started.`);
+                this.uiElements.transToStpInput.value = this.state.currentTransactionId; // Update stop field
+                this.config.transactionIdToStop = this.state.currentTransactionId; // Update config value
+                this.addTransactionToList(this.state.currentTransactionId);
+                this.sendStatusNotification("Charging");
+                // *** NOTE: Removed automatic startSendingMeterValues here. Use Start button or keep it if preferred. ***
+                // this.startSendingMeterValues(false); // false = start new
+                this.updateIndicator("green");
+                this.log("Transaction started. Use 'Start Meter Values' button to begin sending.");
+              } else {
+                const reason = payload.idTagInfo ? payload.idTagInfo.status : "Rejected by server";
+                this.log(`StartTransaction failed: ${reason}`);
+                this.updateIndicator("yellow"); // Or appropriate error state
+              }
+              break;
+
+            case "StopTransaction":
+              // Optional: Check payload.idTagInfo.status if present
+              const stoppedTxId = this.state.currentTransactionId; // Get ID before clearing
+              this.log(`StopTransaction confirmed for Tx ${stoppedTxId}.`);
+              this.clearPersistedState(); // Clear state on successful stop confirmation
+              this.removeTransactionFromList(stoppedTxId); // Remove from UI list
+              // Clear transaction-related state
+              this.state.currentTransactionId = null;
+              this.state.meterValuesArr = null;
+              this.state.meterValueIndex = 0;
+              clearInterval(this.state.meterValueIntervalId); // Ensure meter interval is stopped
+              this.state.meterValueIntervalId = null;
+              this.uiElements.transToStpInput.value = ""; // Clear stop field
+              this.config.transactionIdToStop = null; // Clear config value
+              this.sendStatusNotification("Finishing"); // Optional: Send Finishing then Available
+              setTimeout(() => this.sendStatusNotification("Available"), 2000); // Delay Available status
+              this.updateIndicator("yellow");
+              break;
+
+            case "Heartbeat":
+              this.log(`Heartbeat acknowledged. Server time: ${payload.currentTime}`);
+              break;
+
+            case "MeterValues":
+              this.log(`MeterValues acknowledged.`);
+              break;
+
+            case "StatusNotification":
+              this.log(`StatusNotification acknowledged.`);
+              break;
+
+            case "DataTransfer":
+              this.log(
+                `DataTransfer acknowledged. Status: ${payload.status}, Data: ${payload.data || ""}`
+              );
+              break;
+
+            default:
+              this.log(`Received result for unhandled action: ${action}`);
+              break;
+          }
+        }
+
+        handleCallError(action, messageId, errorCode, errorDescription, errorDetails) {
+          // Added messageId
+          this.log(
+            `Error response received for ${
+              action || "Unknown Action"
+            } (ID: ${messageId}): ${errorCode} - ${errorDescription} ${JSON.stringify(
+              errorDetails
+            )}`
+          );
+          // Potentially update UI based on error (e.g., if StartTransaction failed)
+          if (action === "StartTransaction") {
+            this.updateIndicator("yellow"); // Back to available/idle
+          }
+          // Add more specific error handling if needed
+        }
+
+        handleCall(messageId, action, payload) {
+          this.log(`Command received: ${action}, Payload: ${JSON.stringify(payload)}`);
+          switch (action) {
+            case "RemoteStartTransaction":
+              // Basic implementation: Accept if idle, use provided tag/connector
+              if (!this.state.currentTransactionId) {
+                this.log(
+                  `Accepting RemoteStartTransaction for connector ${
+                    payload.connectorId || "default"
+                  } and idTag ${payload.idTag}`
+                );
+                this.sendResponse(messageId, { status: "Accepted" });
+                // Update config and UI temporarily
+                const originalIdTag = this.config.idTag;
+                const originalConnectorId = this.config.connectorId;
+                this.config.idTag = payload.idTag;
+                this.uiElements.idTagInput.value = payload.idTag;
+                if (payload.connectorId && payload.connectorId > 0) {
+                  this.config.connectorId = payload.connectorId;
+                  this.uiElements.connectorIdInput.value = payload.connectorId;
+                }
+                // Initiate the start transaction locally
+                this.startTransaction(); // This will now log "Use Start Meter Values button"
+                // Restore original config after short delay (or handle state better)
+                setTimeout(() => {
+                  this.config.idTag = originalIdTag;
+                  this.uiElements.idTagInput.value = originalIdTag;
+                  this.config.connectorId = originalConnectorId;
+                  this.uiElements.connectorIdInput.value = originalConnectorId;
+                }, 500);
+              } else {
+                this.log(
+                  `Rejecting RemoteStartTransaction: Already charging (Tx ${this.state.currentTransactionId})`
+                );
+                this.sendResponse(messageId, { status: "Rejected" });
+              }
+              break;
+
+            case "RemoteStopTransaction":
+              const txIdToStop = payload.transactionId;
+              if (txIdToStop === this.state.currentTransactionId) {
+                this.log(`Accepting RemoteStopTransaction for current transaction ${txIdToStop}.`);
+                this.sendResponse(messageId, { status: "Accepted" });
+                // Initiate the stop transaction locally
+                this.stopTransaction(true); // Pass flag indicating remote stop
+              } else {
+                this.log(
+                  `Rejecting RemoteStopTransaction: Tx ID ${txIdToStop} not active (current is ${this.state.currentTransactionId}).`
+                );
+                this.sendResponse(messageId, { status: "Rejected" });
+              }
+              break;
+
+            case "Reset":
+              this.log(`Processing Reset command (Type: ${payload.type})`);
+              this.sendResponse(messageId, { status: "Accepted" });
+              // Simulate reset - disconnect after a short delay
+              setTimeout(() => {
+                this.log(`Performing ${payload.type} reset... disconnecting.`);
+                // For a 'Hard' reset, clear localStorage before disconnecting
+                if (payload.type === "Hard") {
+                  this.clearPersistedState();
+                }
+                this.disconnect(3002); // Use a specific code for reset
+                // Optionally reload the page or re-initialize the simulator instance
+              }, 1000);
+              break;
+
+            case "ChangeAvailability":
+              this.log(
+                `Processing ChangeAvailability for Connector ${payload.connectorId} to ${payload.type}`
+              );
+              // In a real CP, you'd change internal state and maybe hardware.
+              // Here, we just acknowledge and maybe update the default status.
+              if (payload.connectorId === 0 || payload.connectorId === this.config.connectorId) {
+                this.sendResponse(messageId, { status: "Accepted" });
+                let newStatus = "Available"; // Default to Operative
+                if (payload.type === "Inoperative") {
+                  newStatus = "Unavailable"; // Example state change
+                }
+                this.config.statusNotification = newStatus;
+                this.uiElements.statusNotificationInput.value = newStatus;
+                // Send StatusNotification only if not currently charging or if becoming inoperative
+                if (!this.state.currentTransactionId || newStatus === "Unavailable") {
+                  this.sendStatusNotification(newStatus);
                 } else {
-                    // If no active transaction, ensure persisted state is cleared
-                    this.clearPersistedState();
+                  this.log(
+                    `Availability changed to ${newStatus}, but currently charging. StatusNotification not sent.`
+                  );
                 }
-            }
+              } else {
+                this.sendResponse(messageId, { status: "Rejected" }); // Wrong connector
+              }
+              break;
+            case "SetChargingProfile":
+              this.log(`Processing SetChargingProfile for Connector ${payload.connectorId}`);
+              this.sendResponse(messageId, { status: "Accepted" });
+              break;
 
-            clearPersistedState() {
-                const key = this._getPersistenceKey();
-                if (key) {
-                    // Only remove if it exists, prevents unnecessary log messages
-                    if (localStorage.getItem(key)) {
-                        localStorage.removeItem(key);
-                        this.log(`Cleared persisted state for CP ${this.config.chargePointId}`);
-                    }
-                }
-            }
+            // Add handlers for other commands: UnlockConnector, GetConfiguration, ChangeConfiguration, etc.
+            // Each should send a response (Accepted/Rejected/NotSupported) and potentially modify simulator state.
 
-            // --- WebSocket and OCPP Methods ---
+            default:
+              this.log(`Unsupported command received: ${action}. Sending NotSupported.`);
+              this.sendError(
+                messageId,
+                "NotSupported",
+                `Command ${action} is not supported by this simulator.`
+              );
+              break;
+          }
+        }
 
-            connect() {
-                this.loadConfigFromUI(); // Load latest config from UI
-                if (!this.validateFields(['endpointUrl', 'chargePointId', 'chargePointVendor', 'chargePointModel'])) {
-                    return;
-                }
+        // --- OCPP Action Methods ---
 
-                if (this.state.websocket) {
-                    this.log("Disconnecting...");
-                    this.disconnect(3001); // User initiated disconnect
-                    return;
-                }
+        sendBootNotification() {
+          const payload = {
+            chargePointVendor: this.config.chargePointVendor,
+            chargePointModel: this.config.chargePointModel,
+            // Add other BootNotification fields as needed (serial numbers, firmware, etc.)
+            chargePointSerialNumber: `SIM-${this.id}-SN`,
+            firmwareVersion: "1.0.0",
+          };
+          this.sendRequest("BootNotification", payload);
+        }
 
-                // Load persisted state *again* right before connecting, using the potentially updated CP ID
-                this.loadPersistedState();
-                this.updateTransactionsUI(); // Update UI based on loaded state
+        authorize() {
+          if (!this.validateFields(["idTag"])) return;
+          const payload = { idTag: this.config.idTag };
+          this.sendRequest("Authorize", payload);
+        }
 
-                const url = `${this.config.endpointUrl}${this.config.chargePointId}`;
-                this.log(`Connecting to ${url}...`);
-                this.updateIndicator('blue'); // Connecting status
-                this.uiElements.connectButton.textContent = 'Connecting...';
-                this.uiElements.connectButton.disabled = true; // Prevent double clicks
+        startTransaction() {
+          if (
+            !this.validateFields([
+              "connectorId",
+              "idTag",
+              "minEnergy",
+              "meterNumMessages",
+              "meterSampleInterval",
+              "minSoc",
+              "maxSoc",
+              "maxEnergy",
+              "avPower",
+              "avCurrent",
+            ])
+          )
+            return;
 
+          if (this.state.currentTransactionId) {
+            this.log("Cannot start: A transaction is already active.");
+            alert(
+              `Simulator ${this.id}: Cannot start new transaction, Tx ${this.state.currentTransactionId} is already active.`
+            );
+            return;
+          }
+
+          const payload = {
+            connectorId: this.config.connectorId,
+            idTag: this.config.idTag,
+            timestamp: new Date().toISOString(),
+            meterStart: this.config.minEnergy * 1000, // Convert kWh to Wh
+            // reservationId: 0 // Optional
+          };
+          if (this.sendRequest("StartTransaction", payload)) {
+            this.updateIndicator("yellow"); // Indicate pending start
+          }
+        }
+
+        stopTransaction(isRemote = false) {
+          this.loadConfigFromUI(); // Ensure we have the latest Tx ID from the input field if needed
+          const txIdToStop = this.config.transactionIdToStop || this.state.currentTransactionId;
+
+          if (!txIdToStop) {
+            this.log("No active transaction or Transaction ID specified to stop.");
+            alert(
+              `Simulator ${this.id}: Please specify a Transaction ID to stop, or start a transaction first.`
+            );
+            // if (!this.validateFields(['transactionIdToStop'])) return; // Ask for ID if none active - Redundant with alert
+            return;
+          }
+          // If a specific ID is provided, check if it matches the active one (if any)
+          if (this.state.currentTransactionId && txIdToStop !== this.state.currentTransactionId) {
+            this.log(
+              `Warning: Stopping Tx ${txIdToStop} but current active Tx is ${this.state.currentTransactionId}. This might be unintended.`
+            );
+            // Decide if this should be allowed or blocked. For now, allow it but log.
+          }
+
+          if (!this.validateFields(["idTag"])) return; // Need IdTag for stop
+
+          // Stop sending meter values immediately if this stop request is for the *current* transaction
+          if (txIdToStop === this.state.currentTransactionId) {
+            clearInterval(this.state.meterValueIntervalId);
+            this.state.meterValueIntervalId = null;
+            this.log("Stopped sending MeterValues due to StopTransaction request.");
+          }
+
+          // Calculate final meter value based on progress
+          let meterStopValue = this.calculateMeterStopValue(txIdToStop);
+
+          const payload = {
+            transactionId: txIdToStop,
+            idTag: this.config.idTag,
+            timestamp: new Date().toISOString(),
+            meterStop: meterStopValue,
+            reason: isRemote ? "Remote" : "Local", // Optional reason
+            // transactionData: [] // Optional: Add final meter values here?
+          };
+
+          // Send StopTransaction. Confirmation logic is in handleCallResult.
+          if (this.sendRequest("StopTransaction", payload)) {
+            this.log(`StopTransaction sent for Tx ${txIdToStop}. Waiting for confirmation...`);
+            // UI update (indicator, etc.) happens on confirmation
+          }
+
+          // Important: Don't clear local state here. Wait for the server's confirmation
+          // in handleCallResult('StopTransaction', ...).
+        }
+
+        calculateMeterStopValue(transactionId) {
+          // Use the state associated with the *currently active* transaction
+          // or the persisted state if resuming/stopping an old one.
+          let stopValueKwh = 0; // Store as kWh for calculation
+          let sourceArr = null;
+          let sourceIndex = 0;
+
+          // Prioritize currently active transaction state
+          if (transactionId === this.state.currentTransactionId && this.state.meterValuesArr) {
+            sourceArr = this.state.meterValuesArr;
+            sourceIndex = this.state.meterValueIndex;
+            this.log(`Calculating stop value from active state: index ${sourceIndex}`);
+          } else {
+            // If stopping a different ID or no active state, try loading persisted state
+            const key = this._getPersistenceKey();
+            if (key) {
+              const persisted = localStorage.getItem(key);
+              if (persisted) {
                 try {
-                    this.state.websocket = new WebSocket(url, ["ocpp1.6", "ocpp1.5"]);
+                  const parsed = JSON.parse(persisted);
+                  if (parsed.currentTransactionId === transactionId) {
+                    sourceArr = parsed.meterValuesArr;
+                    sourceIndex = parsed.meterValueIndex;
+                    this.log(`Calculating stop value from persisted state: index ${sourceIndex}`);
+                  }
                 } catch (e) {
-                     this.log(`Error creating WebSocket: ${e}`);
-                     this.updateIndicator('red');
-                     this.uiElements.connectButton.textContent = 'Connect';
-                     this.uiElements.connectButton.disabled = false;
-                     return;
+                  this.log(`Error reading persisted state for stop value calc: ${e}`);
                 }
+              }
+            }
+          }
 
+          if (sourceArr && sourceIndex > 0) {
+            // Use the energy value from the *last successfully sent* index (index - 1)
+            const lastSentIndex = Math.max(0, sourceIndex - 1);
+            if (lastSentIndex < sourceArr.length) {
+              const energySample = sourceArr[lastSentIndex]?.meterValue?.find(
+                (mv) => mv.sampledValue[0].measurand === "Energy.Active.Import.Register"
+              );
+              if (energySample) {
+                stopValueKwh = parseFloat(energySample.sampledValue[0].value);
+                this.log(`Last sent energy value: ${stopValueKwh} kWh at index ${lastSentIndex}`);
+              } else {
+                this.log(`Could not find energy measurand at index ${lastSentIndex}`);
+              }
+            } else {
+              this.log(
+                `Last sent index ${lastSentIndex} is out of bounds for meter array (length ${sourceArr.length})`
+              );
+            }
+          } else if (sourceArr && sourceIndex === 0) {
+            this.log("Stop requested before any meter values were sent. Using meterStart value.");
+            stopValueKwh = this.config.minEnergy || 0; // Use configured start value
+          } else {
+            this.log(
+              "No meter values found for calculation. Using configured maxEnergy as fallback."
+            );
+            stopValueKwh = this.config.maxEnergy || 0; // Fallback
+          }
 
-                this.state.websocket.onopen = (event) => {
-                    this.log('WebSocket Opened');
-                    this.state.isConnected = true;
-                    this.uiElements.connectButton.textContent = 'Disconnect';
-                    this.uiElements.connectButton.disabled = false;
-                    this.updateIndicator('yellow'); // Connected, waiting for Boot response
-                    this.sendBootNotification();
-                };
+          // Ensure the value is reasonable (e.g., not negative)
+          stopValueKwh = Math.max(this.config.minEnergy || 0, stopValueKwh);
 
-                this.state.websocket.onmessage = (event) => {
-                    this.handleMessage(event.data);
-                };
+          this.log(`Calculated stop value: ${stopValueKwh} kWh`);
+          return Math.round(stopValueKwh * 1000); // Convert kWh to Wh and round
+        }
 
-                this.state.websocket.onclose = (event) => {
-                    this.log(`WebSocket Closed: Code=${event.code}, Reason=${event.reason || 'N/A'}`);
-                    this.state.isConnected = false;
-                    this.state.websocket = null;
-                    clearInterval(this.state.heartbeatIntervalId);
-                    this.state.heartbeatIntervalId = null;
+        sendHeartbeat() {
+          this.sendRequest("Heartbeat", {});
+        }
 
-                    // If the disconnect was clean (user clicked disconnect), stop meter interval.
-                    // If it was unexpected, leave the interval state alone (it should be null anyway
-                    // unless it failed mid-send), but ensure state is persisted if charging.
-                    if (event.code === 3001) { // Clean disconnect by user
-                        clearInterval(this.state.meterValueIntervalId);
-                        this.state.meterValueIntervalId = null;
-                        // Persist state on clean disconnect *if* a transaction was active
-                        if (this.state.currentTransactionId) {
-                            this.persistState();
-                        }
-                    } else { // Unexpected disconnect
-                        // Stop the interval timer if it happens to be running (unlikely but safe)
-                        clearInterval(this.state.meterValueIntervalId);
-                        this.state.meterValueIntervalId = null;
-                        // Ensure state is persisted if a transaction was active
-                        if (this.state.currentTransactionId) {
-                            this.persistState();
-                            this.log("Unexpected disconnect. Persisted active transaction state.");
-                        } else {
-                            this.log("Unexpected disconnect. No active transaction to persist.");
-                        }
-                    }
+        sendStatusNotification(status = null, errorCode = "NoError", connectorId = null) {
+          const currentStatus = status || this.config.statusNotification;
+          const currentConnectorId = connectorId !== null ? connectorId : this.config.connectorId;
 
-                    this.uiElements.connectButton.textContent = 'Connect';
-                    this.uiElements.connectButton.disabled = false;
-                    this.updateIndicator('red'); // Disconnected status
+          if (!this.validateFields(["connectorId"])) return; // Need connectorId
 
-                    // Optional: Implement automatic reconnection logic here for non-clean disconnects
-                };
+          const payload = {
+            connectorId: currentConnectorId,
+            status: currentStatus,
+            errorCode: errorCode,
+            timestamp: new Date().toISOString(),
+            // info: "", vendorId: "", vendorErrorCode: "" // Optional
+          };
+          if (this.sendRequest("StatusNotification", payload)) {
+            // Update UI input field after sending
+            this.uiElements.statusNotificationInput.value = currentStatus;
+            this.config.statusNotification = currentStatus; // Also update the config object
+          }
+        }
 
-                this.state.websocket.onerror = (event) => {
-                    this.log(`WebSocket Error: ${event.type || 'Unknown error'}`);
-                    // Update UI, maybe try reconnecting depending on the error
-                    this.updateIndicator('red');
-                    this.uiElements.connectButton.textContent = 'Connect';
-                     this.uiElements.connectButton.disabled = false;
-                     // Consider calling the onclose logic here too for cleanup
-                     // this.state.websocket?.close(); // Force close if error didn't trigger it
-                };
+        sendStatusNotificationFromInput() {
+          if (!this.validateFields(["connectorId", "statusNotification"])) return;
+          this.sendStatusNotification(
+            this.config.statusNotification,
+            "NoError",
+            this.config.connectorId
+          );
+        }
+
+        sendDataTransfer() {
+          if (!this.validateFields(["dataTransferData"])) {
+            // Assuming 'dataTransferData' is the key for the input value
+            alert(`Simulator ${this.id}: Please enter data to transfer.`);
+            return;
+          }
+          const payload = {
+            vendorId: "SimulatorVendor", // Or read from config
+            // messageId: "SomeMessageID", // Optional
+            data: this.config.dataTransferData,
+          };
+          this.sendRequest("DataTransfer", payload);
+        }
+
+        startHeartbeat(interval) {
+          clearInterval(this.state.heartbeatIntervalId);
+          if (interval > 0) {
+            this.state.heartbeatIntervalId = setInterval(() => {
+              this.sendHeartbeat();
+            }, interval);
+            this.log(`Heartbeat started every ${interval / 1000}s`);
+          } else {
+            this.log("Heartbeat interval is 0, heartbeat disabled.");
+          }
+        }
+
+        startSendingMeterValues(resume = false) {
+          this.loadConfigFromUI(); // Ensure config is current
+
+          if (!this.state.isConnected) {
+            this.log("Cannot send MeterValues: Not connected.");
+            alert(`Simulator ${this.id}: Cannot send MeterValues, not connected.`);
+            return;
+          }
+
+          if (!this.state.currentTransactionId) {
+            this.log("Cannot send MeterValues: No active transaction ID.");
+            alert(`Simulator ${this.id}: Cannot send MeterValues, no active transaction.`);
+            return;
+          }
+
+          // If already sending, log and exit
+          if (this.state.meterValueIntervalId !== null) {
+            this.log(
+              `MeterValues sending is already active (Interval ID: ${this.state.meterValueIntervalId}).`
+            );
+            return;
+          }
+
+          // Validate necessary config for sending/generating
+          if (
+            !this.validateFields([
+              "meterNumMessages",
+              "meterSampleInterval",
+              "minSoc",
+              "maxSoc",
+              "minEnergy",
+              "maxEnergy",
+              "avPower",
+              "avCurrent",
+            ])
+          )
+            return;
+
+          // --- Decide whether to generate or use existing/persisted data ---
+          let needsGeneration = false;
+          if (resume) {
+            // Trying to resume: Check if we have valid persisted data
+            if (
+              this.state.meterValuesArr &&
+              this.state.meterValuesArr.length > 0 &&
+              this.state.meterValueIndex < this.state.meterValuesArr.length
+            ) {
+              this.log(
+                `Resuming meter values from index ${this.state.meterValueIndex}. Total sets: ${this.state.meterValuesArr.length}`
+              );
+              // Ensure the interval matches the current config (or use persisted interval?)
+              // Let's use the current config's interval for simplicity when resuming via button.
+            } else {
+              this.log(
+                "Resume requested, but no valid persisted meter data found or already finished. Generating new values."
+              );
+              needsGeneration = true; // Treat as starting new if resume data is bad
+              resume = false; // Switch flag
+            }
+          } else {
+            // Starting new: always generate
+            needsGeneration = true;
+          }
+
+          if (needsGeneration) {
+            this.state.meterValuesArr = this.generateMeterValues();
+            this.state.meterValueIndex = 0; // Start from beginning
+            this.log(`Generated ${this.state.meterValuesArr.length} meter value sets.`);
+            // Persist the newly generated array immediately so it's available if disconnected
+            this.persistState();
+          }
+
+          // --- Final checks before starting interval ---
+          if (!this.state.meterValuesArr || this.state.meterValuesArr.length === 0) {
+            this.log("Error: No meter values available to send.");
+            return;
+          }
+
+          if (this.state.meterValueIndex >= this.state.meterValuesArr.length) {
+            this.log(
+              `Cannot start sending: Already at the end of meter values (Index: ${this.state.meterValueIndex}, Total: ${this.state.meterValuesArr.length}).`
+            );
+            return;
+          }
+
+          const intervalSeconds = this.config.meterSampleInterval;
+          if (isNaN(intervalSeconds) || intervalSeconds <= 0) {
+            this.log("Invalid meter value sample interval.");
+            alert(
+              `Simulator ${this.id}: Invalid Meter Interval (${intervalSeconds}s). Must be > 0.`
+            );
+            return;
+          }
+
+          // --- Define the sending function ---
+          const sendNext = () => {
+            // Check if transaction is still active *before* sending
+            if (!this.state.currentTransactionId) {
+              this.log("Transaction stopped externally. Halting MeterValues.");
+              clearInterval(this.state.meterValueIntervalId);
+              this.state.meterValueIntervalId = null;
+              return;
             }
 
-            disconnect(code = 1000) { // 1000 = Normal closure
-                if (this.state.websocket) {
-                    // Stop sending meter values *before* closing
-                    clearInterval(this.state.meterValueIntervalId);
-                    this.state.meterValueIntervalId = null;
+            // Check if index is still valid
+            if (this.state.meterValueIndex < this.state.meterValuesArr.length) {
+              // Deep copy payload to avoid modifying the stored array directly
+              let meterValuePayload;
+              try {
+                meterValuePayload = JSON.parse(
+                  JSON.stringify(this.state.meterValuesArr[this.state.meterValueIndex])
+                );
+              } catch (e) {
+                this.log(
+                  `Error cloning meter value payload at index ${this.state.meterValueIndex}: ${e}`
+                );
+                clearInterval(this.state.meterValueIntervalId);
+                this.state.meterValueIntervalId = null;
+                return;
+              }
 
-                    // Persist state *before* disconnecting if currently charging
-                    if (this.state.currentTransactionId) {
-                       this.persistState();
-                    }
+              // Update timestamps just before sending
+              const now = new Date().toISOString();
+              meterValuePayload.meterValue.forEach((mv) => (mv.timestamp = now));
+              // Ensure correct transactionId is set
+              meterValuePayload.transactionId = this.state.currentTransactionId;
 
-                    this.state.websocket.close(code);
-                    // onclose handler will manage UI updates and state cleanup
-                } else {
-                    // If already disconnected, ensure UI is correct
-                    this.state.isConnected = false;
-                    this.uiElements.connectButton.textContent = 'Connect';
-                    this.uiElements.connectButton.disabled = false;
-                    this.updateIndicator('red');
-                    clearInterval(this.state.heartbeatIntervalId);
-                    this.state.heartbeatIntervalId = null;
-                    clearInterval(this.state.meterValueIntervalId);
-                    this.state.meterValueIntervalId = null;
-                }
-            }
-
-            sendRequest(action, payload) {
-                if (!this.state.websocket || this.state.websocket.readyState !== WebSocket.OPEN) {
-                    this.log(`Cannot send ${action}: WebSocket not open.`);
-                    return false; // Indicate failure
-                }
-                const messageId = this._generateUniqueId();
-                const message = [2, messageId, action, payload];
-                const jsonMessage = JSON.stringify(message);
-                this.log(`TX: ${jsonMessage}`);
-                this.state.lastSentAction = action; // Track for response handling
-                this.state.websocket.send(jsonMessage);
-                return true; // Indicate success
-            }
-
-            sendResponse(messageId, payload) {
-                 if (!this.state.websocket || this.state.websocket.readyState !== WebSocket.OPEN) {
-                    this.log(`Cannot send response: WebSocket not open.`);
-                    return;
-                }
-                const message = [3, messageId, payload];
-                const jsonMessage = JSON.stringify(message);
-                this.log(`TX Response: ${jsonMessage}`);
-                this.state.websocket.send(jsonMessage);
-            }
-
-            sendError(messageId, errorCode, errorDescription = '', errorDetails = {}) {
-                 if (!this.state.websocket || this.state.websocket.readyState !== WebSocket.OPEN) {
-                    this.log(`Cannot send error: WebSocket not open.`);
-                    return;
-                }
-                const message = [4, messageId, errorCode, errorDescription, errorDetails];
-                const jsonMessage = JSON.stringify(message);
-                this.log(`TX Error: ${jsonMessage}`);
-                this.state.websocket.send(jsonMessage);
-            }
-
-            handleMessage(jsonData) {
-                this.log(`RX: ${jsonData}`);
-                try {
-                    const msg = JSON.parse(jsonData);
-                    const messageTypeId = msg[0];
-                    const messageId = msg[1];
-
-                    if (messageTypeId === 3) { // CallResult (Response to our request)
-                        const payload = msg[2];
-                        this.handleCallResult(this.state.lastSentAction, messageId, payload); // Pass messageId
-                    } else if (messageTypeId === 2) { // Call (Command from server)
-                        const action = msg[2];
-                        const payload = msg[3];
-                        this.handleCall(messageId, action, payload);
-                    } else if (messageTypeId === 4) { // CallError (Error response from server)
-                        const errorCode = msg[2];
-                        const errorDescription = msg[3];
-                        const errorDetails = msg[4];
-                        this.handleCallError(this.state.lastSentAction, messageId, errorCode, errorDescription, errorDetails); // Pass messageId
-                    }
-
-                } catch (e) {
-                    this.log(`Error processing message: ${e}`);
-                    this.log(`Raw data: ${jsonData}`);
-                }
-            }
-
-             handleCallResult(action, messageId, payload) { // Added messageId
-                this.log(`Response received for ${action} (ID: ${messageId}): ${JSON.stringify(payload)}`);
-                switch (action) {
-                    case 'BootNotification':
-                        if (payload.status === 'Accepted') {
-                            const interval = payload.interval;
-                            this.log(`Boot successful. Heartbeat interval: ${interval}s. Current time: ${payload.currentTime}`);
-                            this.startHeartbeat(interval * 1000);
-                            this.updateIndicator('yellow'); // Available
-
-                            // *** RESUMPTION LOGIC ***
-                            if (this.state.isResuming && this.state.currentTransactionId && this.state.meterValuesArr) {
-                                this.log(`Attempting to resume transaction ${this.state.currentTransactionId} from index ${this.state.meterValueIndex}`);
-                                // Send StatusNotification Charging to confirm state
-                                this.sendStatusNotification('Charging');
-                                // *** NOTE: Removed automatic startSendingMeterValues here. Use Resume button or keep it if preferred. ***
-                                // this.startSendingMeterValues(true); // true = resume
-                                this.updateIndicator('green'); // Show charging (since we loaded a charging state)
-                                this.log("Resumed charging state loaded. Use 'Resume Meter Values' button to continue sending.");
-                            } else {
-                                // Not resuming, send initial status based on config
-                                this.sendStatusNotification(this.config.statusNotification || 'Available');
-                            }
-                            this.state.isResuming = false; // Clear resume flag after check
-
-                        } else {
-                            this.log(`BootNotification rejected: ${payload.status}. Retrying? Closing?`);
-                            // Handle rejection (e.g., close connection, retry after delay)
-                            this.disconnect();
-                        }
-                        break;
-
-                    case 'Authorize':
-                         this.log(`Authorization status: ${payload.idTagInfo.status}`);
-                         // Can update UI or trigger next step based on status
-                        break;
-
-                    case 'StartTransaction':
-                        if (payload.idTagInfo && payload.idTagInfo.status === 'Accepted') {
-                            this.state.currentTransactionId = payload.transactionId;
-                            this.log(`Transaction ${this.state.currentTransactionId} started.`);
-                            this.uiElements.transToStpInput.value = this.state.currentTransactionId; // Update stop field
-                            this.config.transactionIdToStop = this.state.currentTransactionId; // Update config value
-                            this.addTransactionToList(this.state.currentTransactionId);
-                            this.sendStatusNotification('Charging');
-                            // *** NOTE: Removed automatic startSendingMeterValues here. Use Start button or keep it if preferred. ***
-                            // this.startSendingMeterValues(false); // false = start new
-                            this.updateIndicator('green');
-                            this.log("Transaction started. Use 'Start Meter Values' button to begin sending.");
-                        } else {
-                            const reason = payload.idTagInfo ? payload.idTagInfo.status : 'Rejected by server';
-                            this.log(`StartTransaction failed: ${reason}`);
-                            this.updateIndicator('yellow'); // Or appropriate error state
-                        }
-                        break;
-
-                    case 'StopTransaction':
-                        // Optional: Check payload.idTagInfo.status if present
-                        const stoppedTxId = this.state.currentTransactionId; // Get ID before clearing
-                        this.log(`StopTransaction confirmed for Tx ${stoppedTxId}.`);
-                        this.clearPersistedState(); // Clear state on successful stop confirmation
-                        this.removeTransactionFromList(stoppedTxId); // Remove from UI list
-                        // Clear transaction-related state
-                        this.state.currentTransactionId = null;
-                        this.state.meterValuesArr = null;
-                        this.state.meterValueIndex = 0;
-                        clearInterval(this.state.meterValueIntervalId); // Ensure meter interval is stopped
-                        this.state.meterValueIntervalId = null;
-                        this.uiElements.transToStpInput.value = ''; // Clear stop field
-                        this.config.transactionIdToStop = null; // Clear config value
-                        this.sendStatusNotification('Finishing'); // Optional: Send Finishing then Available
-                        setTimeout(() => this.sendStatusNotification('Available'), 2000); // Delay Available status
-                        this.updateIndicator('yellow');
-                        break;
-
-                    case 'Heartbeat':
-                        this.log(`Heartbeat acknowledged. Server time: ${payload.currentTime}`);
-                        break;
-
-                    case 'MeterValues':
-                        this.log(`MeterValues acknowledged.`);
-                        break;
-
-                    case 'StatusNotification':
-                        this.log(`StatusNotification acknowledged.`);
-                        break;
-
-                    case 'DataTransfer':
-                         this.log(`DataTransfer acknowledged. Status: ${payload.status}, Data: ${payload.data || ''}`);
-                         break;
-
-                    default:
-                        this.log(`Received result for unhandled action: ${action}`);
-                        break;
-                }
-            }
-
-             handleCallError(action, messageId, errorCode, errorDescription, errorDetails) { // Added messageId
-                this.log(`Error response received for ${action || 'Unknown Action'} (ID: ${messageId}): ${errorCode} - ${errorDescription} ${JSON.stringify(errorDetails)}`);
-                // Potentially update UI based on error (e.g., if StartTransaction failed)
-                if (action === 'StartTransaction') {
-                     this.updateIndicator('yellow'); // Back to available/idle
-                }
-                // Add more specific error handling if needed
-            }
-
-            handleCall(messageId, action, payload) {
-                this.log(`Command received: ${action}, Payload: ${JSON.stringify(payload)}`);
-                switch (action) {
-                    case 'RemoteStartTransaction':
-                        // Basic implementation: Accept if idle, use provided tag/connector
-                        if (!this.state.currentTransactionId) {
-                             this.log(`Accepting RemoteStartTransaction for connector ${payload.connectorId || 'default'} and idTag ${payload.idTag}`);
-                             this.sendResponse(messageId, { status: 'Accepted' });
-                             // Update config and UI temporarily
-                             const originalIdTag = this.config.idTag;
-                             const originalConnectorId = this.config.connectorId;
-                             this.config.idTag = payload.idTag;
-                             this.uiElements.idTagInput.value = payload.idTag;
-                             if (payload.connectorId && payload.connectorId > 0) {
-                                 this.config.connectorId = payload.connectorId;
-                                 this.uiElements.connectorIdInput.value = payload.connectorId;
-                             }
-                             // Initiate the start transaction locally
-                             this.startTransaction(); // This will now log "Use Start Meter Values button"
-                             // Restore original config after short delay (or handle state better)
-                             setTimeout(() => {
-                                 this.config.idTag = originalIdTag;
-                                 this.uiElements.idTagInput.value = originalIdTag;
-                                 this.config.connectorId = originalConnectorId;
-                                 this.uiElements.connectorIdInput.value = originalConnectorId;
-                             }, 500);
-                        } else {
-                             this.log(`Rejecting RemoteStartTransaction: Already charging (Tx ${this.state.currentTransactionId})`);
-                             this.sendResponse(messageId, { status: 'Rejected' });
-                        }
-                        break;
-
-                    case 'RemoteStopTransaction':
-                        const txIdToStop = payload.transactionId;
-                        if (txIdToStop === this.state.currentTransactionId) {
-                            this.log(`Accepting RemoteStopTransaction for current transaction ${txIdToStop}.`);
-                            this.sendResponse(messageId, { status: 'Accepted' });
-                            // Initiate the stop transaction locally
-                            this.stopTransaction(true); // Pass flag indicating remote stop
-                        } else {
-                            this.log(`Rejecting RemoteStopTransaction: Tx ID ${txIdToStop} not active (current is ${this.state.currentTransactionId}).`);
-                            this.sendResponse(messageId, { status: 'Rejected' });
-                        }
-                        break;
-
-                    case 'Reset':
-                        this.log(`Processing Reset command (Type: ${payload.type})`);
-                        this.sendResponse(messageId, { status: 'Accepted' });
-                        // Simulate reset - disconnect after a short delay
-                        setTimeout(() => {
-                            this.log(`Performing ${payload.type} reset... disconnecting.`);
-                            // For a 'Hard' reset, clear localStorage before disconnecting
-                            if (payload.type === 'Hard') {
-                                this.clearPersistedState();
-                            }
-                            this.disconnect(3002); // Use a specific code for reset
-                            // Optionally reload the page or re-initialize the simulator instance
-                        }, 1000);
-                        break;
-
-                    case 'ChangeAvailability':
-                         this.log(`Processing ChangeAvailability for Connector ${payload.connectorId} to ${payload.type}`);
-                         // In a real CP, you'd change internal state and maybe hardware.
-                         // Here, we just acknowledge and maybe update the default status.
-                         if (payload.connectorId === 0 || payload.connectorId === this.config.connectorId) {
-                             this.sendResponse(messageId, { status: 'Accepted' });
-                             let newStatus = 'Available'; // Default to Operative
-                             if (payload.type === 'Inoperative') {
-                                 newStatus = 'Unavailable'; // Example state change
-                             }
-                             this.config.statusNotification = newStatus;
-                             this.uiElements.statusNotificationInput.value = newStatus;
-                             // Send StatusNotification only if not currently charging or if becoming inoperative
-                             if (!this.state.currentTransactionId || newStatus === 'Unavailable') {
-                                 this.sendStatusNotification(newStatus);
-                             } else {
-                                 this.log(`Availability changed to ${newStatus}, but currently charging. StatusNotification not sent.`);
-                             }
-                         } else {
-                             this.sendResponse(messageId, { status: 'Rejected' }); // Wrong connector
-                         }
-                         break;
-                    case 'SetChargingProfile':
-                         this.log(`Processing SetChargingProfile for Connector ${payload.connectorId}`);
-                         this.sendResponse(messageId, { status: 'Accepted' });
-                         break;
-
-                    // Add handlers for other commands: UnlockConnector, GetConfiguration, ChangeConfiguration, etc.
-                    // Each should send a response (Accepted/Rejected/NotSupported) and potentially modify simulator state.
-
-                    default:
-                        this.log(`Unsupported command received: ${action}. Sending NotSupported.`);
-                        this.sendError(messageId, 'NotSupported', `Command ${action} is not supported by this simulator.`);
-                        break;
-                }
-            }
-
-            // --- OCPP Action Methods ---
-
-            sendBootNotification() {
-                const payload = {
-                    chargePointVendor: this.config.chargePointVendor,
-                    chargePointModel: this.config.chargePointModel,
-                    // Add other BootNotification fields as needed (serial numbers, firmware, etc.)
-                    chargePointSerialNumber: `SIM-${this.id}-SN`,
-                    firmwareVersion: "1.0.0",
-                };
-                this.sendRequest('BootNotification', payload);
-            }
-
-            authorize() {
-                if (!this.validateFields(['idTag'])) return;
-                const payload = { idTag: this.config.idTag };
-                this.sendRequest('Authorize', payload);
-            }
-
-            startTransaction() {
-                if (!this.validateFields([
-                    'connectorId', 'idTag', 'minEnergy', 'meterNumMessages',
-                    'meterSampleInterval', 'minSoc', 'maxSoc', 'maxEnergy',
-                    'avPower', 'avCurrent'
-                ])) return;
-
+              if (this.sendRequest("MeterValues", meterValuePayload)) {
+                this.state.meterValueIndex++;
+                // Persist state *after* successfully sending (or attempting to send)
+                this.persistState();
+              } else {
+                // If send failed (e.g., websocket closed), stop trying
+                this.log("Failed to send MeterValue (WebSocket likely closed), stopping interval.");
+                clearInterval(this.state.meterValueIntervalId);
+                this.state.meterValueIntervalId = null;
+                // State should have been persisted before disconnect in onclose/disconnect methods
+                // or by the previous successful send.
+              }
+            } else {
+              // Reached the end
+              this.log("Finished sending all meter values for this transaction.");
+              clearInterval(this.state.meterValueIntervalId);
+              this.state.meterValueIntervalId = null;
+              // Optionally auto-stop transaction here?
+              // this.stopTransaction();
+              // Or send final status?
+              this.sendStatusNotification("Finishing");
+              setTimeout(() => {
                 if (this.state.currentTransactionId) {
-                    this.log("Cannot start: A transaction is already active.");
-                    alert(`Simulator ${this.id}: Cannot start new transaction, Tx ${this.state.currentTransactionId} is already active.`);
-                    return;
+                  // Check if still charging
+                  this.sendStatusNotification("SuspendedEVSE"); // Example final state before stop
                 }
-
-                const payload = {
-                    connectorId: this.config.connectorId,
-                    idTag: this.config.idTag,
-                    timestamp: new Date().toISOString(),
-                    meterStart: this.config.minEnergy * 1000, // Convert kWh to Wh
-                    // reservationId: 0 // Optional
-                };
-                if (this.sendRequest('StartTransaction', payload)) {
-                    this.updateIndicator('yellow'); // Indicate pending start
-                }
+              }, 2000);
             }
+          };
 
-            stopTransaction(isRemote = false) {
-                this.loadConfigFromUI(); // Ensure we have the latest Tx ID from the input field if needed
-                const txIdToStop = this.config.transactionIdToStop || this.state.currentTransactionId;
+          // --- Start the process ---
+          this.log(
+            `${
+              resume ? "Resuming" : "Starting"
+            } MeterValues sending every ${intervalSeconds}s from index ${
+              this.state.meterValueIndex
+            }.`
+          );
 
-                if (!txIdToStop) {
-                    this.log("No active transaction or Transaction ID specified to stop.");
-                    alert(`Simulator ${this.id}: Please specify a Transaction ID to stop, or start a transaction first.`);
-                    // if (!this.validateFields(['transactionIdToStop'])) return; // Ask for ID if none active - Redundant with alert
-                    return;
-                }
-                // If a specific ID is provided, check if it matches the active one (if any)
-                if (this.state.currentTransactionId && txIdToStop !== this.state.currentTransactionId) {
-                     this.log(`Warning: Stopping Tx ${txIdToStop} but current active Tx is ${this.state.currentTransactionId}. This might be unintended.`);
-                     // Decide if this should be allowed or blocked. For now, allow it but log.
-                }
+          // Send the first one immediately
+          sendNext();
 
-                if (!this.validateFields(['idTag'])) return; // Need IdTag for stop
+          // Schedule subsequent sends only if the first send didn't fail and we're not already at the end
+          if (
+            this.state.meterValueIntervalId === null && // Check if sendNext cleared the interval already
+            this.state.currentTransactionId && // Check if transaction still active
+            this.state.meterValueIndex < this.state.meterValuesArr.length
+          ) {
+            // Check if more values exist
+            this.state.meterValueIntervalId = setInterval(sendNext, intervalSeconds * 1000);
+          } else if (this.state.meterValueIntervalId !== null) {
+            this.log("Interval already running or cleared by sendNext.");
+          } else {
+            this.log("Not scheduling interval (already finished or transaction stopped).");
+          }
+        }
 
-                // Stop sending meter values immediately if this stop request is for the *current* transaction
-                if (txIdToStop === this.state.currentTransactionId) {
-                    clearInterval(this.state.meterValueIntervalId);
-                    this.state.meterValueIntervalId = null;
-                    this.log("Stopped sending MeterValues due to StopTransaction request.");
-                }
+        generateMeterValues() {
+          const numMessages = this.config.meterNumMessages;
+          const minSoc = this.config.minSoc;
+          const maxSoc = this.config.maxSoc;
+          const minEnergy = this.config.minEnergy;
+          const maxEnergy = this.config.maxEnergy;
+          const avPower = this.config.avPower;
+          const avCurrent = this.config.avCurrent;
+          const connectorId = this.config.connectorId;
+          // Transaction ID will be added just before sending
 
-                // Calculate final meter value based on progress
-                let meterStopValue = this.calculateMeterStopValue(txIdToStop);
+          if (numMessages <= 0) return [];
 
-                const payload = {
-                    transactionId: txIdToStop,
-                    idTag: this.config.idTag,
-                    timestamp: new Date().toISOString(),
-                    meterStop: meterStopValue,
-                    reason: isRemote ? "Remote" : "Local", // Optional reason
-                    // transactionData: [] // Optional: Add final meter values here?
-                };
+          let generatedValues = [];
+          // Calculate steps based on numMessages > 1 to avoid division by zero
+          const energyStep = numMessages > 1 ? (maxEnergy - minEnergy) / (numMessages - 1) : 0;
+          const socStep = numMessages > 1 ? (maxSoc - minSoc) / (numMessages - 1) : 0;
 
-                // Send StopTransaction. Confirmation logic is in handleCallResult.
-                if (this.sendRequest('StopTransaction', payload)) {
-                     this.log(`StopTransaction sent for Tx ${txIdToStop}. Waiting for confirmation...`);
-                     // UI update (indicator, etc.) happens on confirmation
-                }
+          for (let i = 0; i < numMessages; i++) {
+            // Calculate energy: start + step * i. Cap at maxEnergy.
+            const energyVal = Math.min(maxEnergy, minEnergy + i * energyStep).toFixed(3);
+            // Calculate SoC: start + step * i. Round, cap at maxSoc.
+            const socVal = Math.min(maxSoc, Math.round(minSoc + i * socStep));
 
-                // Important: Don't clear local state here. Wait for the server's confirmation
-                // in handleCallResult('StopTransaction', ...).
-            }
-
-            calculateMeterStopValue(transactionId) {
-                // Use the state associated with the *currently active* transaction
-                // or the persisted state if resuming/stopping an old one.
-                let stopValueKwh = 0; // Store as kWh for calculation
-                let sourceArr = null;
-                let sourceIndex = 0;
-
-                // Prioritize currently active transaction state
-                if (transactionId === this.state.currentTransactionId && this.state.meterValuesArr) {
-                    sourceArr = this.state.meterValuesArr;
-                    sourceIndex = this.state.meterValueIndex;
-                    this.log(`Calculating stop value from active state: index ${sourceIndex}`);
-                } else {
-                    // If stopping a different ID or no active state, try loading persisted state
-                    const key = this._getPersistenceKey();
-                    if (key) {
-                        const persisted = localStorage.getItem(key);
-                        if (persisted) {
-                            try {
-                                const parsed = JSON.parse(persisted);
-                                if (parsed.currentTransactionId === transactionId) {
-                                    sourceArr = parsed.meterValuesArr;
-                                    sourceIndex = parsed.meterValueIndex;
-                                    this.log(`Calculating stop value from persisted state: index ${sourceIndex}`);
-                                }
-                            } catch (e) {
-                                this.log(`Error reading persisted state for stop value calc: ${e}`);
-                            }
-                        }
-                    }
-                }
-
-                if (sourceArr && sourceIndex > 0) {
-                    // Use the energy value from the *last successfully sent* index (index - 1)
-                    const lastSentIndex = Math.max(0, sourceIndex - 1);
-                    if (lastSentIndex < sourceArr.length) {
-                        const energySample = sourceArr[lastSentIndex]?.meterValue?.find(mv =>
-                           mv.sampledValue[0].measurand === "Energy.Active.Import.Register"
-                        );
-                        if (energySample) {
-                            stopValueKwh = parseFloat(energySample.sampledValue[0].value);
-                            this.log(`Last sent energy value: ${stopValueKwh} kWh at index ${lastSentIndex}`);
-                        } else {
-                             this.log(`Could not find energy measurand at index ${lastSentIndex}`);
-                        }
-                    } else {
-                         this.log(`Last sent index ${lastSentIndex} is out of bounds for meter array (length ${sourceArr.length})`);
-                    }
-                } else if (sourceArr && sourceIndex === 0) {
-                     this.log("Stop requested before any meter values were sent. Using meterStart value.");
-                     stopValueKwh = this.config.minEnergy || 0; // Use configured start value
-                } else {
-                     this.log("No meter values found for calculation. Using configured maxEnergy as fallback.");
-                     stopValueKwh = this.config.maxEnergy || 0; // Fallback
-                }
-
-                // Ensure the value is reasonable (e.g., not negative)
-                stopValueKwh = Math.max(this.config.minEnergy || 0, stopValueKwh);
-
-                this.log(`Calculated stop value: ${stopValueKwh} kWh`);
-                return Math.round(stopValueKwh * 1000); // Convert kWh to Wh and round
-            }
-
-            sendHeartbeat() {
-                this.sendRequest('Heartbeat', {});
-            }
-
-            sendStatusNotification(status = null, errorCode = 'NoError', connectorId = null) {
-                const currentStatus = status || this.config.statusNotification;
-                const currentConnectorId = connectorId !== null ? connectorId : this.config.connectorId;
-
-                if (!this.validateFields(['connectorId'])) return; // Need connectorId
-
-                const payload = {
-                    connectorId: currentConnectorId,
-                    status: currentStatus,
-                    errorCode: errorCode,
-                    timestamp: new Date().toISOString(),
-                    // info: "", vendorId: "", vendorErrorCode: "" // Optional
-                };
-                this.sendRequest('StatusNotification', payload);
-            }
-
-             sendStatusNotificationFromInput() {
-                if (!this.validateFields(['connectorId', 'statusNotification'])) return;
-                this.sendStatusNotification(this.config.statusNotification, 'NoError', this.config.connectorId);
-            }
-
-            sendDataTransfer() {
-                if (!this.validateFields(['dataTransferData'])) { // Assuming 'dataTransferData' is the key for the input value
-                     alert(`Simulator ${this.id}: Please enter data to transfer.`);
-                     return;
-                }
-                const payload = {
-                    vendorId: "SimulatorVendor", // Or read from config
-                    // messageId: "SomeMessageID", // Optional
-                    data: this.config.dataTransferData
-                };
-                this.sendRequest('DataTransfer', payload);
-            }
-
-            startHeartbeat(interval) {
-                clearInterval(this.state.heartbeatIntervalId);
-                if (interval > 0) {
-                    this.state.heartbeatIntervalId = setInterval(() => {
-                        this.sendHeartbeat();
-                    }, interval);
-                    this.log(`Heartbeat started every ${interval / 1000}s`);
-                } else {
-                     this.log("Heartbeat interval is 0, heartbeat disabled.");
-                }
-            }
-
-            startSendingMeterValues(resume = false) {
-                this.loadConfigFromUI(); // Ensure config is current
-
-                if (!this.state.isConnected) {
-                    this.log("Cannot send MeterValues: Not connected.");
-                    alert(`Simulator ${this.id}: Cannot send MeterValues, not connected.`);
-                    return;
-                }
-
-                if (!this.state.currentTransactionId) {
-                    this.log("Cannot send MeterValues: No active transaction ID.");
-                    alert(`Simulator ${this.id}: Cannot send MeterValues, no active transaction.`);
-                    return;
-                }
-
-                // If already sending, log and exit
-                if (this.state.meterValueIntervalId !== null) {
-                    this.log(`MeterValues sending is already active (Interval ID: ${this.state.meterValueIntervalId}).`);
-                    return;
-                }
-
-                // Validate necessary config for sending/generating
-                 if (!this.validateFields([
-                    'meterNumMessages', 'meterSampleInterval', 'minSoc', 'maxSoc',
-                    'minEnergy', 'maxEnergy', 'avPower', 'avCurrent'
-                ])) return;
-
-
-                // --- Decide whether to generate or use existing/persisted data ---
-                let needsGeneration = false;
-                if (resume) {
-                    // Trying to resume: Check if we have valid persisted data
-                    if (this.state.meterValuesArr && this.state.meterValuesArr.length > 0 && this.state.meterValueIndex < this.state.meterValuesArr.length) {
-                        this.log(`Resuming meter values from index ${this.state.meterValueIndex}. Total sets: ${this.state.meterValuesArr.length}`);
-                        // Ensure the interval matches the current config (or use persisted interval?)
-                        // Let's use the current config's interval for simplicity when resuming via button.
-                    } else {
-                        this.log("Resume requested, but no valid persisted meter data found or already finished. Generating new values.");
-                        needsGeneration = true; // Treat as starting new if resume data is bad
-                        resume = false; // Switch flag
-                    }
-                } else {
-                    // Starting new: always generate
-                    needsGeneration = true;
-                }
-
-                if (needsGeneration) {
-                    this.state.meterValuesArr = this.generateMeterValues();
-                    this.state.meterValueIndex = 0; // Start from beginning
-                    this.log(`Generated ${this.state.meterValuesArr.length} meter value sets.`);
-                    // Persist the newly generated array immediately so it's available if disconnected
-                    this.persistState();
-                }
-
-                // --- Final checks before starting interval ---
-                if (!this.state.meterValuesArr || this.state.meterValuesArr.length === 0) {
-                    this.log("Error: No meter values available to send.");
-                    return;
-                }
-
-                if (this.state.meterValueIndex >= this.state.meterValuesArr.length) {
-                    this.log(`Cannot start sending: Already at the end of meter values (Index: ${this.state.meterValueIndex}, Total: ${this.state.meterValuesArr.length}).`);
-                    return;
-                }
-
-                const intervalSeconds = this.config.meterSampleInterval;
-                if (isNaN(intervalSeconds) || intervalSeconds <= 0) {
-                    this.log("Invalid meter value sample interval.");
-                    alert(`Simulator ${this.id}: Invalid Meter Interval (${intervalSeconds}s). Must be > 0.`);
-                    return;
-                }
-
-                // --- Define the sending function ---
-                const sendNext = () => {
-                    // Check if transaction is still active *before* sending
-                    if (!this.state.currentTransactionId) {
-                         this.log("Transaction stopped externally. Halting MeterValues.");
-                         clearInterval(this.state.meterValueIntervalId);
-                         this.state.meterValueIntervalId = null;
-                         return;
-                    }
-
-                    // Check if index is still valid
-                    if (this.state.meterValueIndex < this.state.meterValuesArr.length) {
-                        // Deep copy payload to avoid modifying the stored array directly
-                        let meterValuePayload;
-                        try {
-                            meterValuePayload = JSON.parse(JSON.stringify(this.state.meterValuesArr[this.state.meterValueIndex]));
-                        } catch (e) {
-                            this.log(`Error cloning meter value payload at index ${this.state.meterValueIndex}: ${e}`);
-                            clearInterval(this.state.meterValueIntervalId);
-                            this.state.meterValueIntervalId = null;
-                            return;
-                        }
-
-                        // Update timestamps just before sending
-                        const now = new Date().toISOString();
-                        meterValuePayload.meterValue.forEach(mv => mv.timestamp = now);
-                        // Ensure correct transactionId is set
-                        meterValuePayload.transactionId = this.state.currentTransactionId;
-
-                        if (this.sendRequest('MeterValues', meterValuePayload)) {
-                             this.state.meterValueIndex++;
-                             // Persist state *after* successfully sending (or attempting to send)
-                             this.persistState();
-                        } else {
-                             // If send failed (e.g., websocket closed), stop trying
-                             this.log("Failed to send MeterValue (WebSocket likely closed), stopping interval.");
-                             clearInterval(this.state.meterValueIntervalId);
-                             this.state.meterValueIntervalId = null;
-                             // State should have been persisted before disconnect in onclose/disconnect methods
-                             // or by the previous successful send.
-                        }
-                    } else {
-                        // Reached the end
-                        this.log("Finished sending all meter values for this transaction.");
-                        clearInterval(this.state.meterValueIntervalId);
-                        this.state.meterValueIntervalId = null;
-                        // Optionally auto-stop transaction here?
-                        // this.stopTransaction();
-                        // Or send final status?
-                        this.sendStatusNotification('Finishing');
-                        setTimeout(() => {
-                            if (this.state.currentTransactionId) { // Check if still charging
-                                this.sendStatusNotification('SuspendedEVSE'); // Example final state before stop
-                            }
-                        }, 2000);
-                    }
-                };
-
-                // --- Start the process ---
-                this.log(`${resume ? 'Resuming' : 'Starting'} MeterValues sending every ${intervalSeconds}s from index ${this.state.meterValueIndex}.`);
-
-                // Send the first one immediately
-                sendNext();
-
-                // Schedule subsequent sends only if the first send didn't fail and we're not already at the end
-                if (this.state.meterValueIntervalId === null && // Check if sendNext cleared the interval already
-                    this.state.currentTransactionId && // Check if transaction still active
-                    this.state.meterValueIndex < this.state.meterValuesArr.length) // Check if more values exist
+            // Create payload structure for this step
+            const payload = {
+              connectorId: connectorId,
+              // transactionId: will be set later
+              meterValue: [
                 {
-                    this.state.meterValueIntervalId = setInterval(sendNext, intervalSeconds * 1000);
-                } else if (this.state.meterValueIntervalId !== null) {
-                     this.log("Interval already running or cleared by sendNext.");
-                } else {
-                     this.log("Not scheduling interval (already finished or transaction stopped).");
-                }
+                  timestamp: new Date().toISOString(), // Will be updated on send
+                  sampledValue: [
+                    {
+                      value: energyVal, // Use calculated value
+                      context: "Sample.Periodic",
+                      format: "Raw",
+                      measurand: "Energy.Active.Import.Register",
+                      location: "Outlet",
+                      unit: "kWh",
+                    },
+                  ],
+                },
+                {
+                  timestamp: new Date().toISOString(),
+                  sampledValue: [
+                    {
+                      value: avCurrent.toString(), // Assuming constant for simplicity
+                      context: "Sample.Periodic",
+                      format: "Raw",
+                      measurand: "Current.Import",
+                      unit: "A",
+                    },
+                  ],
+                },
+                {
+                  timestamp: new Date().toISOString(),
+                  sampledValue: [
+                    {
+                      value: socVal.toString(), // Use calculated value
+                      context: "Sample.Periodic",
+                      format: "Raw",
+                      measurand: "SoC",
+                      unit: "Percent",
+                    },
+                  ],
+                },
+                {
+                  timestamp: new Date().toISOString(),
+                  sampledValue: [
+                    {
+                      value: avPower.toString(), // Assuming constant for simplicity
+                      context: "Sample.Periodic",
+                      format: "Raw",
+                      measurand: "Power.Active.Import",
+                      unit: "W",
+                    },
+                  ],
+                },
+                // Add other measurands if needed (Voltage, Power.Reactive, etc.)
+              ],
+            };
+            generatedValues.push(payload);
+          }
+          return generatedValues;
+        }
+
+        // --- Transaction List UI ---
+        updateTransactionsUI() {
+          this.uiElements.transactionsArea.innerHTML = ""; // Clear existing
+          if (this.state.activeTransactions.length === 0) {
+            this.uiElements.transactionsArea.innerHTML = "No active transactions!";
+          } else {
+            this.state.activeTransactions.forEach((txId) => {
+              if (txId) {
+                // Filter out null/undefined if they sneak in
+                const div = document.createElement("div");
+                div.textContent = txId;
+                this.uiElements.transactionsArea.appendChild(div);
+              }
+            });
+          }
+          // Also update the Stop Transaction input if there's a current one
+          this.uiElements.transToStpInput.value = this.state.currentTransactionId || "";
+          this.config.transactionIdToStop = this.state.currentTransactionId || null;
+        }
+
+        addTransactionToList(txId) {
+          if (txId && !this.state.activeTransactions.includes(txId)) {
+            this.state.activeTransactions.push(txId);
+            this.updateTransactionsUI();
+            this.persistState(); // Persist the updated list
+          }
+        }
+
+        removeTransactionFromList(txId) {
+          const index = this.state.activeTransactions.indexOf(txId);
+          if (index > -1) {
+            this.state.activeTransactions.splice(index, 1);
+            this.updateTransactionsUI();
+            // Persist state *after* clearing currentTransactionId if it matches
+            if (this.state.currentTransactionId === txId) {
+              this.state.currentTransactionId = null; // Clear current if it was removed
+              this.config.transactionIdToStop = null;
             }
+            this.persistState(); // Persist the updated list (or clear if no tx active)
+          } else if (this.state.currentTransactionId === txId) {
+            // If it wasn't in the list but was the current one, still clear current
+            this.state.currentTransactionId = null;
+            this.config.transactionIdToStop = null;
+            this.updateTransactionsUI(); // Update UI to reflect cleared current ID
+            this.persistState();
+          }
+        }
+      } // End Simulator Class
 
-            generateMeterValues() {
-                const numMessages = this.config.meterNumMessages;
-                const minSoc = this.config.minSoc;
-                const maxSoc = this.config.maxSoc;
-                const minEnergy = this.config.minEnergy;
-                const maxEnergy = this.config.maxEnergy;
-                const avPower = this.config.avPower;
-                const avCurrent = this.config.avCurrent;
-                const connectorId = this.config.connectorId;
-                // Transaction ID will be added just before sending
+      // =============================================
+      // Initialization
+      // =============================================
+      const simulators = [];
+      const NUM_SIMULATORS = 4; // Number of simulator tabs to create
 
-                if (numMessages <= 0) return [];
+      function getSimulatorHTMLTemplate(simId) {
+        // Generates the HTML structure for one simulator instance
+        // Uses unique IDs based on simId
+        const defaultCPID = `SIM_${simId}`;
+        const defaultTag = `TAG_${simId}`;
+        const defaultEndpoint = "wss://ocpp-dev.hiev.network/ocpp/";
 
-                let generatedValues = [];
-                // Calculate steps based on numMessages > 1 to avoid division by zero
-                const energyStep = numMessages > 1 ? (maxEnergy - minEnergy) / (numMessages - 1) : 0;
-                const socStep = numMessages > 1 ? (maxSoc - minSoc) / (numMessages - 1) : 0;
-
-                for (let i = 0; i < numMessages; i++) {
-                    // Calculate energy: start + step * i. Cap at maxEnergy.
-                    const energyVal = Math.min(maxEnergy, minEnergy + i * energyStep).toFixed(3);
-                    // Calculate SoC: start + step * i. Round, cap at maxSoc.
-                    const socVal = Math.min(maxSoc, Math.round(minSoc + i * socStep));
-
-                    // Create payload structure for this step
-                    const payload = {
-                        connectorId: connectorId,
-                        // transactionId: will be set later
-                        meterValue: [
-                            {
-                                timestamp: new Date().toISOString(), // Will be updated on send
-                                sampledValue: [{
-                                    value: energyVal, // Use calculated value
-                                    context: "Sample.Periodic", format: "Raw",
-                                    measurand: "Energy.Active.Import.Register",
-                                    location: "Outlet", unit: "kWh"
-                                }]
-                            },
-                            {
-                                timestamp: new Date().toISOString(),
-                                sampledValue: [{
-                                    value: avCurrent.toString(), // Assuming constant for simplicity
-                                    context: "Sample.Periodic", format: "Raw",
-                                    measurand: "Current.Import", unit: "A"
-                                }]
-                            },
-                            {
-                                timestamp: new Date().toISOString(),
-                                sampledValue: [{
-                                    value: socVal.toString(), // Use calculated value
-                                    context: "Sample.Periodic", format: "Raw",
-                                    measurand: "SoC", unit: "Percent"
-                                }]
-                            },
-                            {
-                                timestamp: new Date().toISOString(),
-                                sampledValue: [{
-                                    value: avPower.toString(), // Assuming constant for simplicity
-                                    context: "Sample.Periodic", format: "Raw",
-                                    measurand: "Power.Active.Import", unit: "W"
-                                }]
-                            }
-                            // Add other measurands if needed (Voltage, Power.Reactive, etc.)
-                        ]
-                    };
-                    generatedValues.push(payload);
-                }
-                return generatedValues;
-            }
-
-            // --- Transaction List UI ---
-            updateTransactionsUI() {
-                this.uiElements.transactionsArea.innerHTML = ''; // Clear existing
-                if (this.state.activeTransactions.length === 0) {
-                    this.uiElements.transactionsArea.innerHTML = 'No active transactions!';
-                } else {
-                    this.state.activeTransactions.forEach(txId => {
-                        if (txId) { // Filter out null/undefined if they sneak in
-                            const div = document.createElement('div');
-                            div.textContent = txId;
-                            this.uiElements.transactionsArea.appendChild(div);
-                        }
-                    });
-                }
-                 // Also update the Stop Transaction input if there's a current one
-                 this.uiElements.transToStpInput.value = this.state.currentTransactionId || '';
-                 this.config.transactionIdToStop = this.state.currentTransactionId || null;
-            }
-
-            addTransactionToList(txId) {
-                if (txId && !this.state.activeTransactions.includes(txId)) {
-                    this.state.activeTransactions.push(txId);
-                    this.updateTransactionsUI();
-                    this.persistState(); // Persist the updated list
-                }
-            }
-
-            removeTransactionFromList(txId) {
-                const index = this.state.activeTransactions.indexOf(txId);
-                if (index > -1) {
-                    this.state.activeTransactions.splice(index, 1);
-                    this.updateTransactionsUI();
-                    // Persist state *after* clearing currentTransactionId if it matches
-                    if (this.state.currentTransactionId === txId) {
-                        this.state.currentTransactionId = null; // Clear current if it was removed
-                        this.config.transactionIdToStop = null;
-                    }
-                    this.persistState(); // Persist the updated list (or clear if no tx active)
-                } else if (this.state.currentTransactionId === txId) {
-                     // If it wasn't in the list but was the current one, still clear current
-                     this.state.currentTransactionId = null;
-                     this.config.transactionIdToStop = null;
-                     this.updateTransactionsUI(); // Update UI to reflect cleared current ID
-                     this.persistState();
-                }
-            }
-
-        } // End Simulator Class
-
-        // =============================================
-        // Initialization
-        // =============================================
-        const simulators = [];
-        const NUM_SIMULATORS = 4; // Number of simulator tabs to create
-
-        function getSimulatorHTMLTemplate(simId) {
-            // Generates the HTML structure for one simulator instance
-            // Uses unique IDs based on simId
-            const defaultCPID = `SIM_${simId}`;
-            const defaultTag = `TAG_${simId}`;
-            const defaultEndpoint = "wss://ocpp-dev.hiev.network/ocpp/";
-
-            // *** UPDATED HTML TEMPLATE ***
-            return `
+        // *** UPDATED HTML TEMPLATE ***
+        return `
                 <div class="flex-container">
                   <div class="item-1">
                     <button id="connect-${simId}">Connect</button>
@@ -1240,7 +1423,7 @@
                             <span>Charge Point Vendor</span><input id="chargePointVendor-${simId}" type="text" placeholder="Charge Point Vendor" value="Simulator"/>
                             <span>Charge Point Model</span><input id="chargePointModel-${simId}" type="text" placeholder="Charge Point Model" value="JS-SIM-1.6"/>
                             <span>Id Tag</span><input id="idTag-${simId}" type="text" placeholder="Id Tag" value="${defaultTag}" />
-                            <span>Default Status</span><input id="statusNotification-${simId}" type="text" placeholder="Status (e.g., Available)" value="Available"/>
+                            <span>Status</span><input id="statusNotification-${simId}" type="text" placeholder="Status (e.g., Available, Preparing, Charging, etc.)" value="Available"/>
                             <span>Meter Msgs</span><input id="meterValuesNumberOfMessages-${simId}" type="text" placeholder="# Msgs" value="60" size="5"/>
                             <span>Meter Interval (s)</span><input id="meterValueSampleIntervalInSeconds-${simId}" type="text" placeholder="Interval (s)" value="10" size="5"/>
                             <span>Min SoC (%)</span><input id="minSoc-${simId}" type="text" placeholder="Min SoC" value="10" size="5"/>
@@ -1265,110 +1448,110 @@
                   </div>
                 </div>
             `;
+      }
+
+      function initializeSimulators() {
+        const mainContainer = document.getElementById("simulator-container");
+        const tabContainer = document.getElementById("simulator-tabs");
+
+        for (let i = 1; i <= NUM_SIMULATORS; i++) {
+          // 1. Create Main Tab Link
+          const tabLink = document.createElement("li");
+          const tabA = document.createElement("a");
+          tabA.href = `#sim-${i}`;
+          tabA.textContent = `Simulator ${i}`;
+          tabA.dataset.simId = i;
+          if (i === 1) tabA.classList.add("active");
+          tabLink.appendChild(tabA);
+          tabContainer.appendChild(tabLink);
+
+          // 2. Create Main Tab Content Pane
+          const simDiv = document.createElement("div");
+          simDiv.id = `sim-${i}`;
+          simDiv.classList.add("simulator-instance");
+          if (i !== 1) simDiv.style.display = "none"; // Hide inactive tabs
+          simDiv.innerHTML = getSimulatorHTMLTemplate(i);
+          mainContainer.appendChild(simDiv);
+
+          // 3. Create Simulator Instance
+          const simulator = new Simulator(i, simDiv);
+          simulators.push(simulator);
+
+          // 4. Initialize Inner Tabs for this instance (using simple show/hide)
+          initializeInnerTabs(simDiv, i);
         }
 
-        function initializeSimulators() {
-            const mainContainer = document.getElementById('simulator-container');
-            const tabContainer = document.getElementById('simulator-tabs');
+        // Add event listener for MAIN simulator tabs
+        tabContainer.addEventListener("click", (event) => {
+          if (event.target.tagName === "A" && event.target.dataset.simId) {
+            event.preventDefault();
+            const targetId = event.target.href.split("#")[1];
 
-            for (let i = 1; i <= NUM_SIMULATORS; i++) {
-                // 1. Create Main Tab Link
-                const tabLink = document.createElement('li');
-                const tabA = document.createElement('a');
-                tabA.href = `#sim-${i}`;
-                tabA.textContent = `Simulator ${i}`;
-                tabA.dataset.simId = i;
-                if (i === 1) tabA.classList.add('active');
-                tabLink.appendChild(tabA);
-                tabContainer.appendChild(tabLink);
+            // Hide all simulator divs
+            mainContainer
+              .querySelectorAll(".simulator-instance")
+              .forEach((div) => (div.style.display = "none"));
+            // Deactivate all main tabs
+            tabContainer.querySelectorAll("a").forEach((a) => a.classList.remove("active"));
 
-                // 2. Create Main Tab Content Pane
-                const simDiv = document.createElement('div');
-                simDiv.id = `sim-${i}`;
-                simDiv.classList.add('simulator-instance');
-                if (i !== 1) simDiv.style.display = 'none'; // Hide inactive tabs
-                simDiv.innerHTML = getSimulatorHTMLTemplate(i);
-                mainContainer.appendChild(simDiv);
+            // Show target div
+            const targetDiv = document.getElementById(targetId);
+            if (targetDiv) {
+              targetDiv.style.display = "block";
+            }
+            // Activate target tab
+            event.target.classList.add("active");
+          }
+        });
+      }
 
-                // 3. Create Simulator Instance
-                const simulator = new Simulator(i, simDiv);
-                simulators.push(simulator);
+      function initializeInnerTabs(simulatorContainer, simId) {
+        const innerTabs = simulatorContainer.querySelector(".inner-tabs");
+        const innerContents = simulatorContainer.querySelectorAll(".inner-content");
 
-                // 4. Initialize Inner Tabs for this instance (using simple show/hide)
-                 initializeInnerTabs(simDiv, i);
+        if (!innerTabs || innerContents.length === 0) return;
+
+        innerTabs.addEventListener("click", (event) => {
+          if (event.target.tagName === "A") {
+            event.preventDefault();
+            const targetContentId = event.target.getAttribute("href"); // Get href like #tab-settings-1
+
+            // Hide all content panes within this simulator
+            innerContents.forEach((content) => content.classList.remove("active")); // Assuming 'active' class controls display: block/none
+            innerContents.forEach((content) => (content.style.display = "none")); // Force hide
+
+            // Deactivate all tabs within this simulator
+            innerTabs.querySelectorAll("a").forEach((a) => a.classList.remove("active"));
+
+            // Show target content pane
+            const targetContent = simulatorContainer.querySelector(targetContentId);
+            if (targetContent) {
+              targetContent.classList.add("active");
+              targetContent.style.display = "block"; // Force show
             }
 
-            // Add event listener for MAIN simulator tabs
-            tabContainer.addEventListener('click', (event) => {
-                if (event.target.tagName === 'A' && event.target.dataset.simId) {
-                    event.preventDefault();
-                    const targetId = event.target.href.split('#')[1];
-
-                    // Hide all simulator divs
-                    mainContainer.querySelectorAll('.simulator-instance').forEach(div => div.style.display = 'none');
-                    // Deactivate all main tabs
-                    tabContainer.querySelectorAll('a').forEach(a => a.classList.remove('active'));
-
-                    // Show target div
-                    const targetDiv = document.getElementById(targetId);
-                     if (targetDiv) {
-                        targetDiv.style.display = 'block';
-                     }
-                    // Activate target tab
-                    event.target.classList.add('active');
-                }
-            });
-        }
-
-        function initializeInnerTabs(simulatorContainer, simId) {
-             const innerTabs = simulatorContainer.querySelector('.inner-tabs');
-             const innerContents = simulatorContainer.querySelectorAll('.inner-content');
-
-             if (!innerTabs || innerContents.length === 0) return;
-
-             innerTabs.addEventListener('click', (event) => {
-                 if (event.target.tagName === 'A') {
-                     event.preventDefault();
-                     const targetContentId = event.target.getAttribute('href'); // Get href like #tab-settings-1
-
-                     // Hide all content panes within this simulator
-                     innerContents.forEach(content => content.classList.remove('active')); // Assuming 'active' class controls display: block/none
-                     innerContents.forEach(content => content.style.display = 'none'); // Force hide
-
-                     // Deactivate all tabs within this simulator
-                     innerTabs.querySelectorAll('a').forEach(a => a.classList.remove('active'));
-
-                     // Show target content pane
-                     const targetContent = simulatorContainer.querySelector(targetContentId);
-                     if (targetContent) {
-                         targetContent.classList.add('active');
-                         targetContent.style.display = 'block'; // Force show
-                     }
-
-                     // Activate target tab
-                     event.target.classList.add('active');
-                 }
-             });
-
-             // Ensure initial state is correct (first tab/content active)
-             innerTabs.querySelector('a').classList.add('active');
-             innerContents.forEach((content, index) => {
-                 content.style.display = index === 0 ? 'block' : 'none';
-                 if (index === 0) content.classList.add('active'); else content.classList.remove('active');
-             });
-        }
-
-
-        // Initialize when the DOM is ready
-        $(document).ready(function() {
-            initializeSimulators();
-            // Note: The original tabtastic.js might interfere or not work as expected
-            // with the dynamic content and the custom inner tab logic above.
-            // It's safer to rely on the custom initializeInnerTabs function.
-            // If tabtastic.js is essential, it would need careful integration or modification.
+            // Activate target tab
+            event.target.classList.add("active");
+          }
         });
 
-    </script>
+        // Ensure initial state is correct (first tab/content active)
+        innerTabs.querySelector("a").classList.add("active");
+        innerContents.forEach((content, index) => {
+          content.style.display = index === 0 ? "block" : "none";
+          if (index === 0) content.classList.add("active");
+          else content.classList.remove("active");
+        });
+      }
 
-</body>
+      // Initialize when the DOM is ready
+      $(document).ready(function () {
+        initializeSimulators();
+        // Note: The original tabtastic.js might interfere or not work as expected
+        // with the dynamic content and the custom inner tab logic above.
+        // It's safer to rely on the custom initializeInnerTabs function.
+        // If tabtastic.js is essential, it would need careful integration or modification.
+      });
+    </script>
+  </body>
 </html>
