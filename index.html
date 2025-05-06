@@ -107,6 +107,11 @@
             isResuming: false, // Flag to indicate if we loaded persisted state
             messageCounter: 0, // Simple counter for unique message IDs
             activeTransactions: [], // Store transaction IDs for display
+            // --- Reconnection State ---
+            reconnectAttempts: 0,
+            maxReconnectAttempts: 5,
+            reconnectTimerId: null,
+            reconnectBaseDelay: 2000, // ms, initial delay
           };
           this.uiElements = {}; // References to DOM elements for this instance
 
@@ -123,6 +128,51 @@
         _generateUniqueId() {
           // Simple unique ID for OCPP messages (could be more robust)
           return `msg-${this.id}-${Date.now()}-${this.state.messageCounter++}`;
+        }
+
+        _clearReconnectAttempts() {
+          if (this.state.reconnectTimerId) {
+            clearTimeout(this.state.reconnectTimerId);
+            this.state.reconnectTimerId = null;
+          }
+          this.state.reconnectAttempts = 0;
+          // UI updates for the button will be handled by connect() or _attemptReconnect() when it gives up.
+        }
+
+        _attemptReconnect() {
+          if (this.state.reconnectAttempts < this.state.maxReconnectAttempts) {
+            this.state.reconnectAttempts++;
+            // Exponential backoff: e.g., 2s, 4s, 8s, 16s, 32s
+            const delay =
+              this.state.reconnectBaseDelay * Math.pow(2, this.state.reconnectAttempts - 1);
+            this.log(
+              `Connection lost/failed. Attempting to reconnect in ${delay / 1000}s (Attempt ${
+                this.state.reconnectAttempts
+              }/${this.state.maxReconnectAttempts})...`
+            );
+
+            this.updateIndicator("blue"); // Show connecting
+            this.uiElements.connectButton.textContent = `Reconnecting (${this.state.reconnectAttempts}/${this.state.maxReconnectAttempts})...`;
+            this.uiElements.connectButton.disabled = true;
+
+            this.state.reconnectTimerId = setTimeout(() => {
+              this.log(`Reconnection attempt ${this.state.reconnectAttempts}...`);
+              this.connect(true); // Pass flag to indicate it's a reconnect attempt
+            }, delay);
+          } else {
+            this.log(
+              `Max reconnection attempts (${this.state.maxReconnectAttempts}) reached. Staying disconnected.`
+            );
+            this.updateIndicator("red");
+            this.uiElements.connectButton.textContent = "Connect";
+            this.uiElements.connectButton.disabled = false;
+            // Ensure any final timer is cleared, attempts remain at max to prevent immediate re-trigger
+            // A new manual connection attempt via connect() will reset this.
+            if (this.state.reconnectTimerId) {
+              clearTimeout(this.state.reconnectTimerId);
+              this.state.reconnectTimerId = null;
+            }
+          }
         }
 
         _bindUIElements() {
@@ -377,7 +427,11 @@
 
         // --- WebSocket and OCPP Methods ---
 
-        connect() {
+        connect(isReconnectAttempt = false) {
+          if (!isReconnectAttempt) {
+            this._clearReconnectAttempts(); // User-initiated connection, reset any prior auto-reconnects
+          }
+
           this.loadConfigFromUI(); // Load latest config from UI
           if (
             !this.validateFields([
@@ -387,6 +441,13 @@
               "chargePointModel",
             ])
           ) {
+            return;
+          }
+
+          if (this.state.websocket && !isReconnectAttempt) {
+            // Only if user clicks "Disconnect"
+            this.log("Disconnecting (user initiated)...");
+            this.disconnect(3001); // User initiated disconnect code
             return;
           }
 
@@ -418,6 +479,7 @@
 
           this.state.websocket.onopen = (event) => {
             this.log("WebSocket Opened");
+            this._clearReconnectAttempts(); // Successfully connected, reset any reconnection attempts
             this.state.isConnected = true;
             this.uiElements.connectButton.textContent = "Disconnect";
             this.uiElements.connectButton.disabled = false;
@@ -431,55 +493,84 @@
 
           this.state.websocket.onclose = (event) => {
             this.log(`WebSocket Closed: Code=${event.code}, Reason=${event.reason || "N/A"}`);
+            const wasConnected = this.state.isConnected;
             this.state.isConnected = false;
-            this.state.websocket = null;
+            this.state.websocket = null; // Important: nullify the websocket object
             clearInterval(this.state.heartbeatIntervalId);
             this.state.heartbeatIntervalId = null;
 
-            // If the disconnect was clean (user clicked disconnect), stop meter interval.
-            // If it was unexpected, leave the interval state alone (it should be null anyway
-            // unless it failed mid-send), but ensure state is persisted if charging.
-            if (event.code === 3001) {
-              // Clean disconnect by user
-              clearInterval(this.state.meterValueIntervalId);
-              this.state.meterValueIntervalId = null;
-              // Persist state on clean disconnect *if* a transaction was active
-              if (this.state.currentTransactionId) {
+            // Special codes for controlled disconnections
+            // 3001: User clicked "Disconnect" button or connect() initiated a disconnect before reconnecting.
+            // 3002: Disconnect after a Reset command.
+            // 1000: Normal closure (can be server or client initiated clean close).
+            const controlledDisconnectCodes = [1000, 3001, 3002];
+            const isControlledDisconnect = controlledDisconnectCodes.includes(event.code);
+
+            // Stop meter sending interval
+            clearInterval(this.state.meterValueIntervalId);
+            this.state.meterValueIntervalId = null;
+
+            if (isControlledDisconnect) {
+              this.log("Controlled disconnect. Auto-reconnection will not be attempted.");
+              this._clearReconnectAttempts(); // Ensure no stray timers or pending attempts
+              // Persist state on clean disconnect *if* a transaction was active,
+              // unless it was a Hard Reset (which clears state before disconnect).
+              if (this.state.currentTransactionId && event.code !== 3002) {
                 this.persistState();
               }
+              // Update UI to disconnected state if not already handled by _clearReconnectAttempts or connect()
+              this.updateIndicator("red");
+              this.uiElements.connectButton.textContent = "Connect";
+              this.uiElements.connectButton.disabled = false;
             } else {
-              // Unexpected disconnect
-              // Stop the interval timer if it happens to be running (unlikely but safe)
-              clearInterval(this.state.meterValueIntervalId);
-              this.state.meterValueIntervalId = null;
-              // Ensure state is persisted if a transaction was active
+              // Unexpected disconnect or initial connection failure
+              this.log("Unexpected disconnect or initial connection failure.");
               if (this.state.currentTransactionId) {
                 this.persistState();
-                this.log("Unexpected disconnect. Persisted active transaction state.");
+                this.log("Persisted active transaction state due to unexpected disconnect.");
               } else {
-                this.log("Unexpected disconnect. No active transaction to persist.");
+                this.log("No active transaction to persist for unexpected disconnect.");
               }
+              this._attemptReconnect(); // Attempt to reconnect
             }
 
-            this.uiElements.connectButton.textContent = "Connect";
-            this.uiElements.connectButton.disabled = false;
-            this.updateIndicator("red"); // Disconnected status
-
-            // Optional: Implement automatic reconnection logic here for non-clean disconnects
+            // Fallback UI update if not handled by reconnection logic (e.g., max attempts reached and _attemptReconnect updated it)
+            // This ensures the UI is correctly set if _attemptReconnect doesn't kick in or finishes.
+            if (
+              this.state.reconnectAttempts >= this.state.maxReconnectAttempts &&
+              !this.state.reconnectTimerId
+            ) {
+              this.updateIndicator("red");
+              this.uiElements.connectButton.textContent = "Connect";
+              this.uiElements.connectButton.disabled = false;
+            } else if (isControlledDisconnect) {
+              // Ensure UI is set for controlled disconnects
+              this.updateIndicator("red");
+              this.uiElements.connectButton.textContent = "Connect";
+              this.uiElements.connectButton.disabled = false;
+            }
           };
 
           this.state.websocket.onerror = (event) => {
+            // Log the error. The onclose event will typically follow and handle reconnection logic.
             this.log(`WebSocket Error: ${event.type || "Unknown error"}`);
-            // Update UI, maybe try reconnecting depending on the error
-            this.updateIndicator("red");
-            this.uiElements.connectButton.textContent = "Connect";
-            this.uiElements.connectButton.disabled = false;
-            // Consider calling the onclose logic here too for cleanup
-            // this.state.websocket?.close(); // Force close if error didn't trigger it
+            // UI updates are primarily managed by onclose and _attemptReconnect.
+            // If onclose isn't triggered or doesn't start reconnection, this ensures UI is reset.
+            // This check is a safeguard.
+            if (
+              !this.state.isConnected &&
+              this.state.reconnectAttempts === 0 &&
+              !this.state.reconnectTimerId
+            ) {
+              this.updateIndicator("red");
+              this.uiElements.connectButton.textContent = "Connect";
+              this.uiElements.connectButton.disabled = false;
+            }
           };
         }
 
         disconnect(code = 1000) {
+          this._clearReconnectAttempts(); // Stop any scheduled auto-reconnects on manual/programmatic disconnect
           // 1000 = Normal closure
           if (this.state.websocket) {
             // Stop sending meter values *before* closing
