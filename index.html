@@ -112,6 +112,7 @@
             maxReconnectAttempts: 5,
             reconnectTimerId: null,
             reconnectBaseDelay: 2000, // ms, initial delay
+            pendingStopConfirmationForTxId: null, // ID of transaction for which StopTransaction.req has been sent
           };
           this.uiElements = {}; // References to DOM elements for this instance
 
@@ -499,6 +500,38 @@
             clearInterval(this.state.heartbeatIntervalId);
             this.state.heartbeatIntervalId = null;
 
+            // --- Preemptive check for pending StopTransaction ---
+            if (
+              this.state.pendingStopConfirmationForTxId &&
+              this.state.pendingStopConfirmationForTxId === this.state.currentTransactionId
+            ) {
+              this.log(
+                `Disconnected while StopTransaction was pending for Tx ${this.state.pendingStopConfirmationForTxId}. Clearing local and persisted state for this transaction.`
+              );
+
+              // Clear local transaction state immediately
+              const pendingTxId = this.state.pendingStopConfirmationForTxId;
+              this.state.currentTransactionId = null;
+              this.state.meterValuesArr = null;
+              this.state.meterValueIndex = 0;
+              clearInterval(this.state.meterValueIntervalId);
+              this.state.meterValueIntervalId = null;
+              if (this.uiElements.transToStpInput) this.uiElements.transToStpInput.value = "";
+              this.config.transactionIdToStop = null;
+
+              this.clearPersistedState(); // Remove from localStorage
+              this.removeTransactionFromList(pendingTxId); // Update UI list
+              this.state.pendingStopConfirmationForTxId = null; // Clear the flag
+
+              // Update UI to disconnected state after cleaning up the stopped transaction
+              this.updateIndicator("red");
+              this.uiElements.connectButton.textContent = "Connect";
+              this.uiElements.connectButton.disabled = false;
+              this._clearReconnectAttempts(); // Do not attempt to reconnect in this specific scenario immediately, let user reconnect manually or standard logic handle next time.
+              return; // Exit onclose early as we've handled this specific state.
+            }
+            // --- End of preemptive check ---
+
             // Special codes for controlled disconnections
             // 3001: User clicked "Disconnect" button or connect() initiated a disconnect before reconnecting.
             // 3002: Disconnect after a Reset command.
@@ -753,6 +786,7 @@
               this.sendStatusNotification("Finishing"); // Optional: Send Finishing then Available
               setTimeout(() => this.sendStatusNotification("Available"), 2000); // Delay Available status
               this.updateIndicator("yellow");
+              this.state.pendingStopConfirmationForTxId = null; // Clear pending flag
               break;
 
             case "Heartbeat":
@@ -791,6 +825,11 @@
           // Potentially update UI based on error (e.g., if StartTransaction failed)
           if (action === "StartTransaction") {
             this.updateIndicator("yellow"); // Back to available/idle
+          }
+          // If the error was for a StopTransaction, clear the pending flag
+          if (action === "StopTransaction") {
+            this.state.pendingStopConfirmationForTxId = null;
+            this.log(`Cleared pending stop flag due to error for Tx ${messageId}.`); // Assuming messageId might relate to the TxID or log it if available
           }
           // Add more specific error handling if needed
         }
@@ -976,6 +1015,13 @@
             // if (!this.validateFields(['transactionIdToStop'])) return; // Ask for ID if none active - Redundant with alert
             return;
           }
+
+          // Check if a StopTransaction is already pending for this ID
+          if (this.state.pendingStopConfirmationForTxId === txIdToStop) {
+            this.log(`StopTransaction for Tx ${txIdToStop} is already pending. Please wait.`);
+            return;
+          }
+
           // If a specific ID is provided, check if it matches the active one (if any)
           if (this.state.currentTransactionId && txIdToStop !== this.state.currentTransactionId) {
             this.log(
@@ -1008,6 +1054,7 @@
           // Send StopTransaction. Confirmation logic is in handleCallResult.
           if (this.sendRequest("StopTransaction", payload)) {
             this.log(`StopTransaction sent for Tx ${txIdToStop}. Waiting for confirmation...`);
+            this.state.pendingStopConfirmationForTxId = txIdToStop; // Set pending confirmation flag
             // UI update (indicator, etc.) happens on confirmation
           }
 
