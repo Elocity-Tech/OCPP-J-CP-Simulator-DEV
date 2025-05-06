@@ -368,7 +368,7 @@
                 ]; // Restore list
 
                 // Update UI to reflect loaded state
-                this.uiElements.transToStpInput.value = this.state.currentTransactionId;
+                // this.uiElements.transToStpInput.value = this.state.currentTransactionId; // MODIFIED: Do not auto-fill this on load
                 this.uiElements.meterIntervalInput.value = this.config.meterSampleInterval;
                 this.uiElements.meterNumMessagesInput.value = this.config.meterNumMessages;
                 // Update other UI fields if their config was loaded from persistence
@@ -725,8 +725,8 @@
                   this.log(
                     `Attempting to resume transaction ${this.state.currentTransactionId} from index ${this.state.meterValueIndex}`
                   );
-                  // Send StatusNotification Charging to confirm state
-                  this.sendStatusNotification("Charging");
+                  // Send StatusNotification Charging to confirm state, but don't update the UI field
+                  this.sendStatusNotification("Charging", "NoError", null, false);
                   // *** NOTE: Removed automatic startSendingMeterValues here. Use Resume button or keep it if preferred. ***
                   // this.startSendingMeterValues(true); // true = resume
                   this.updateIndicator("green"); // Show charging (since we loaded a charging state)
@@ -734,8 +734,13 @@
                     "Resumed charging state loaded. Use 'Resume Meter Values' button to continue sending."
                   );
                 } else {
-                  // Not resuming, send initial status based on config
-                  this.sendStatusNotification(this.config.statusNotification || "Available");
+                  // Not resuming, send initial status based on config (and update UI field by default)
+                  this.sendStatusNotification(
+                    this.config.statusNotification || "Available",
+                    "NoError",
+                    null,
+                    false
+                  );
                 }
                 this.state.isResuming = false; // Clear resume flag after check
               } else {
@@ -1133,7 +1138,12 @@
           this.sendRequest("Heartbeat", {});
         }
 
-        sendStatusNotification(status = null, errorCode = "NoError", connectorId = null) {
+        sendStatusNotification(
+          status = null,
+          errorCode = "NoError",
+          connectorId = null,
+          updateUiField = true
+        ) {
           const currentStatus = status || this.config.statusNotification;
           const currentConnectorId = connectorId !== null ? connectorId : this.config.connectorId;
 
@@ -1147,9 +1157,11 @@
             // info: "", vendorId: "", vendorErrorCode: "" // Optional
           };
           if (this.sendRequest("StatusNotification", payload)) {
-            // Update UI input field after sending
-            this.uiElements.statusNotificationInput.value = currentStatus;
-            this.config.statusNotification = currentStatus; // Also update the config object
+            // Update UI input field after sending, if requested
+            if (updateUiField) {
+              this.uiElements.statusNotificationInput.value = currentStatus;
+            }
+            this.config.statusNotification = currentStatus; // Always update the config object
           }
         }
 
