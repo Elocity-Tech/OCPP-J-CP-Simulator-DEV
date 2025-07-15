@@ -938,6 +938,179 @@
               this.sendResponse(messageId, { status: "Accepted" });
               break;
 
+            case "UnlockConnector":
+              this.log(`Processing UnlockConnector for Connector ${payload.connectorId}`);
+              this.sendResponse(messageId, { status: "Unlocked" });
+              break;
+
+            case "ChangeConfiguration":
+              this.log(
+                `Processing ChangeConfiguration for Key: ${payload.key}, Value: ${payload.value}`
+              );
+              this.sendResponse(messageId, { status: "Accepted" });
+              break;
+
+            case "ClearCache":
+              this.log(`Processing ClearCache command`);
+              this.sendResponse(messageId, { status: "Accepted" });
+              break;
+
+            case "GetConfiguration":
+              this.log(`Processing GetConfiguration command`);
+              // Return some basic configuration keys
+              const configKeys = payload.key || [];
+              const configurationKey = [
+                {
+                  key: "HeartbeatInterval",
+                  readonly: false,
+                  value: "60",
+                },
+                {
+                  key: "MeterValueSampleInterval",
+                  readonly: false,
+                  value: "10",
+                },
+                {
+                  key: "NumberOfConnectors",
+                  readonly: true,
+                  value: "1",
+                },
+              ];
+
+              let filteredKeys = configurationKey;
+              if (configKeys.length > 0) {
+                filteredKeys = configurationKey.filter((config) => configKeys.includes(config.key));
+              }
+
+              this.sendResponse(messageId, {
+                configurationKey: filteredKeys,
+                unknownKey: [],
+              });
+              break;
+
+            case "DataTransfer":
+              this.log(
+                `Processing DataTransfer - VendorId: ${payload.vendorId}, MessageId: ${
+                  payload.messageId || "N/A"
+                }`
+              );
+              this.sendResponse(messageId, {
+                status: "Accepted",
+                data: "Response from simulator",
+              });
+              break;
+
+            case "GetLocalListVersion":
+              this.log(`Processing GetLocalListVersion command`);
+              this.sendResponse(messageId, { listVersion: 1 });
+              break;
+
+            case "SendLocalList":
+              this.log(
+                `Processing SendLocalList - Version: ${payload.listVersion}, UpdateType: ${payload.updateType}`
+              );
+              this.sendResponse(messageId, { status: "Accepted" });
+              break;
+
+            case "CancelReservation":
+              this.log(`Processing CancelReservation for ReservationId: ${payload.reservationId}`);
+              this.sendResponse(messageId, { status: "Accepted" });
+              break;
+
+            case "ReserveNow":
+              this.log(
+                `Processing ReserveNow - ConnectorId: ${payload.connectorId}, ExpiryDate: ${payload.expiryDate}, IdTag: ${payload.idTag}`
+              );
+              this.sendResponse(messageId, { status: "Accepted" });
+              break;
+
+            case "ClearChargingProfile":
+              this.log(
+                `Processing ClearChargingProfile - Id: ${payload.id || "All"}, ConnectorId: ${
+                  payload.connectorId || "All"
+                }`
+              );
+              this.sendResponse(messageId, { status: "Accepted" });
+              break;
+
+            case "GetCompositeSchedule":
+              this.log(
+                `Processing GetCompositeSchedule - ConnectorId: ${payload.connectorId}, Duration: ${payload.duration}`
+              );
+              this.sendResponse(messageId, {
+                status: "Accepted",
+                connectorId: payload.connectorId,
+                scheduleStart: new Date().toISOString(),
+                chargingSchedule: {
+                  duration: payload.duration,
+                  chargingRateUnit: "W",
+                  chargingSchedulePeriod: [
+                    {
+                      startPeriod: 0,
+                      limit: 7000,
+                    },
+                  ],
+                },
+              });
+              break;
+
+            case "TriggerMessage":
+              this.log(
+                `Processing TriggerMessage - RequestedMessage: ${
+                  payload.requestedMessage
+                }, ConnectorId: ${payload.connectorId || "N/A"}`
+              );
+              this.sendResponse(messageId, { status: "Accepted" });
+
+              // Simulate triggering the requested message after a short delay
+              setTimeout(() => {
+                switch (payload.requestedMessage) {
+                  case "BootNotification":
+                    this.sendBootNotification();
+                    break;
+                  case "Heartbeat":
+                    this.sendHeartbeat();
+                    break;
+                  case "StatusNotification":
+                    this.sendStatusNotification(
+                      this.config.statusNotification || "Available",
+                      "NoError",
+                      payload.connectorId || this.config.connectorId
+                    );
+                    break;
+                  case "MeterValues":
+                    if (this.state.currentTransactionId) {
+                      // Send a single meter value if transaction is active
+                      this.startSendingMeterValues(false);
+                    } else {
+                      this.log("Cannot trigger MeterValues: No active transaction");
+                    }
+                    break;
+                  default:
+                    this.log(`TriggerMessage: ${payload.requestedMessage} not implemented`);
+                    break;
+                }
+              }, 500);
+              break;
+
+            case "GetDiagnostics":
+              this.log(`Processing GetDiagnostics - Location: ${payload.location}`);
+              this.sendResponse(messageId, {
+                fileName: `diagnostics_${this.config.chargePointId}_${Date.now()}.log`,
+              });
+              break;
+
+            case "UpdateFirmware":
+              this.log(
+                `Processing UpdateFirmware - Location: ${payload.location}, RetrieveDate: ${payload.retrieveDate}`
+              );
+              this.sendResponse(messageId, {});
+              // Simulate firmware update process
+              setTimeout(() => {
+                this.log("Firmware update completed (simulated)");
+              }, 2000);
+              break;
+
             // Add handlers for other commands: UnlockConnector, GetConfiguration, ChangeConfiguration, etc.
             // Each should send a response (Accepted/Rejected/NotSupported) and potentially modify simulator state.
 
