@@ -1095,9 +1095,22 @@
 
             case "GetDiagnostics":
               this.log(`Processing GetDiagnostics - Location: ${payload.location}`);
+              const fileName = `diagnostics_${this.config.chargePointId}_${Date.now()}.log`;
               this.sendResponse(messageId, {
-                fileName: `diagnostics_${this.config.chargePointId}_${Date.now()}.log`,
+                fileName: fileName,
               });
+              
+              // Simulate diagnostics upload process
+              setTimeout(() => {
+                this.log(`Starting diagnostics upload to ${payload.location}...`);
+                this.sendDiagnosticsStatusNotification("Uploading");
+                
+                setTimeout(() => {
+                  this.log(`Diagnostics upload completed: ${fileName}`);
+                  this.sendDiagnosticsStatusNotification("Uploaded");
+                }, 3000); // 3 seconds to upload
+                
+              }, 1000); // Wait 1 second before starting upload
               break;
 
             case "UpdateFirmware":
@@ -1336,6 +1349,13 @@
             }
             this.config.statusNotification = currentStatus; // Always update the config object
           }
+        }
+
+        sendDiagnosticsStatusNotification(status) {
+          const payload = {
+            status: status
+          };
+          this.sendRequest("DiagnosticsStatusNotification", payload);
         }
 
         sendStatusNotificationFromInput() {
