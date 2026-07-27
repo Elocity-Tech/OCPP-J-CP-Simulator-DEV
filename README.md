@@ -9,6 +9,14 @@ A comprehensive, multi-instance OCPP 1.6 charge point simulator with advanced fe
 - **Tabbed interface** - Easy switching between different simulator configurations
 - **Independent state management** - Each instance maintains its own connection and transaction state
 
+### 🔌🔌 Dual-Connector Charge Points
+- **2 connectors per charge point** - Each simulator instance models one EVSE with Connector 1 and Connector 2 over a single WebSocket connection (`NumberOfConnectors` = 2)
+- **Independent, simultaneous charging** - Each connector has its own Id Tag, transaction, status, meter-value stream and status indicator, and can charge at the same time as the other
+- **Per-connector controls** - Separate Authorize / Start Tx / Stop Tx / Status / Meter Value buttons for each connector
+- **Connector-aware remote commands** - `RemoteStartTransaction`, `RemoteStopTransaction`, `ChangeAvailability` (connector 0 = whole station) and `TriggerMessage` are routed to the correct connector
+- **Message-ID response routing** - OCPP responses are correlated to the exact request/connector by message id
+- **Shared vs. per-connector settings** - Endpoint, charge-point identity and meter generation parameters are shared; Id Tag and Status are configured per connector
+
 ### 🔌 OCPP 1.6 Compliance
 - **Full OCPP 1.6 protocol support** - Implements all major OCPP operations
 - **WebSocket communication** - Real-time bidirectional communication with OCPP servers
@@ -72,10 +80,9 @@ A comprehensive, multi-instance OCPP 1.6 charge point simulator with advanced fe
    - Default: `wss://ocpp-dev.evnet.xyz/ocpp/`
 2. **Charge Point ID**: Unique identifier for your simulator instance
    - Default: `SIM_1`, `SIM_2`, etc.
-3. **Connector ID**: Physical connector identifier
-   - Default: `1`
-4. **Authorization Tag**: RFID tag for authorization
-   - Default: `TAG_1`, `TAG_2`, etc.
+3. **Connectors**: Each charge point exposes two fixed connectors (`1` and `2`), each with its own control panel
+4. **Authorization Tag**: RFID tag for authorization, set per connector
+   - Default: `TAG_<sim>_<connector>` (e.g., `TAG_1_1`, `TAG_1_2`)
 
 ### Basic Usage
 1. **Connect**: Click "Connect" to establish WebSocket connection

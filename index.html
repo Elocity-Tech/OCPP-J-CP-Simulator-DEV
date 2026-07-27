@@ -51,6 +51,19 @@
       .inner-content.active {
         display: block;
       }
+      /* Per-connector control panel */
+      .connector-panel {
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        padding: 8px;
+        margin: 6px 0;
+        background: #fafafa;
+      }
+      .connector-panel strong {
+        display: inline-block;
+        margin-bottom: 4px;
+        color: #222a45;
+      }
     </style>
   </head>
   <body>
@@ -88,46 +101,67 @@
 
     <script>
       // =============================================
-      // Simulator Class Definition
+      // Simulator Class Definition (Multi-Connector)
       // =============================================
+      // Each Simulator instance models ONE OCPP 1.6J Charge Point (one
+      // WebSocket connection / one Charge Point Id) that exposes TWO physical
+      // connectors. Connector 1 and Connector 2 each maintain their own
+      // transaction, meter-value stream, status and indicator, and can charge
+      // independently and simultaneously over the single shared connection.
       class Simulator {
         constructor(id, containerElement) {
           this.id = id; // e.g., 1, 2, 3, 4
           this.container = containerElement; // The div holding this simulator's UI
-          this.config = {}; // Will hold settings like endpoint, cpId, etc.
+          this.CONNECTOR_IDS = [1, 2]; // Two physical connectors per charge point
+
+          this.config = {}; // Shared charge-point level settings
           this.state = {
             websocket: null,
             isConnected: false,
-            lastSentAction: null,
             heartbeatIntervalId: null,
-            meterValueIntervalId: null,
-            meterValuesArr: null,
-            meterValueIndex: 0,
-            currentTransactionId: null,
-            isResuming: false, // Flag to indicate if we loaded persisted state
             messageCounter: 0, // Simple counter for unique message IDs
-            activeTransactions: [], // Store transaction IDs for display
+            // Maps an outgoing OCPP messageId -> { action, connectorId } so that
+            // CallResult / CallError responses are routed to the correct connector.
+            pendingRequests: {},
             // --- Reconnection State ---
             reconnectAttempts: 0,
             maxReconnectAttempts: 5,
             reconnectTimerId: null,
             reconnectBaseDelay: 2000, // ms, initial delay
-            pendingStopConfirmationForTxId: null, // ID of transaction for which StopTransaction.req has been sent
           };
-          this.uiElements = {}; // References to DOM elements for this instance
+          this.connectors = {}; // Per-connector state, keyed by connectorId
+          this.uiElements = {}; // Shared DOM element references
 
+          this._initConnectors();
           this._bindUIElements();
           this.loadConfigFromUI(); // Load initial values from HTML
           this._bindUIEvents();
-          this.updateIndicator("red"); // Start as disconnected
+          this.CONNECTOR_IDS.forEach((cid) => this.updateIndicator(cid, "red")); // Start disconnected
           this.loadPersistedState(); // Check localStorage on initialization
-          this.updateTransactionsUI(); // Display any loaded transactions
+          this.CONNECTOR_IDS.forEach((cid) => this.updateTransactionsUI(cid));
         }
 
-        // --- Private Helper Methods ---
+        // --- Setup Helpers ---
+
+        _initConnectors() {
+          this.CONNECTOR_IDS.forEach((cid) => {
+            this.connectors[cid] = {
+              id: cid,
+              config: { idTag: "", statusNotification: "Available" },
+              currentTransactionId: null,
+              transactionIdToStop: null,
+              meterValuesArr: null,
+              meterValueIndex: 0,
+              meterValueIntervalId: null,
+              activeTransactions: [], // Store transaction IDs for display
+              pendingStopConfirmationForTxId: null,
+              isResuming: false, // Flag set when persisted state was loaded
+              ui: {}, // Per-connector DOM references
+            };
+          });
+        }
 
         _generateUniqueId() {
-          // Simple unique ID for OCPP messages (could be more robust)
           return `msg-${this.id}-${Date.now()}-${this.state.messageCounter++}`;
         }
 
@@ -137,13 +171,11 @@
             this.state.reconnectTimerId = null;
           }
           this.state.reconnectAttempts = 0;
-          // UI updates for the button will be handled by connect() or _attemptReconnect() when it gives up.
         }
 
         _attemptReconnect() {
           if (this.state.reconnectAttempts < this.state.maxReconnectAttempts) {
             this.state.reconnectAttempts++;
-            // Exponential backoff: e.g., 2s, 4s, 8s, 16s, 32s
             const delay =
               this.state.reconnectBaseDelay * Math.pow(2, this.state.reconnectAttempts - 1);
             this.log(
@@ -151,24 +183,20 @@
                 this.state.reconnectAttempts
               }/${this.state.maxReconnectAttempts})...`
             );
-
-            this.updateIndicator("blue"); // Show connecting
+            this.updateAllIndicators("blue"); // Show connecting
             this.uiElements.connectButton.textContent = `Reconnecting (${this.state.reconnectAttempts}/${this.state.maxReconnectAttempts})...`;
             this.uiElements.connectButton.disabled = true;
-
             this.state.reconnectTimerId = setTimeout(() => {
               this.log(`Reconnection attempt ${this.state.reconnectAttempts}...`);
-              this.connect(true); // Pass flag to indicate it's a reconnect attempt
+              this.connect(true);
             }, delay);
           } else {
             this.log(
               `Max reconnection attempts (${this.state.maxReconnectAttempts}) reached. Staying disconnected.`
             );
-            this.updateIndicator("red");
+            this.updateAllIndicators("red");
             this.uiElements.connectButton.textContent = "Connect";
             this.uiElements.connectButton.disabled = false;
-            // Ensure any final timer is cleared, attempts remain at max to prevent immediate re-trigger
-            // A new manual connection attempt via connect() will reset this.
             if (this.state.reconnectTimerId) {
               clearTimeout(this.state.reconnectTimerId);
               this.state.reconnectTimerId = null;
@@ -177,87 +205,75 @@
         }
 
         _bindUIElements() {
-          // Find all relevant elements within this simulator's container
-          this.uiElements.connectButton = this.container.querySelector(`#connect-${this.id}`);
-          this.uiElements.authorizeButton = this.container.querySelector(`#send-${this.id}`);
-          this.uiElements.startButton = this.container.querySelector(`#start-${this.id}`);
-          this.uiElements.stopButton = this.container.querySelector(`#stop-${this.id}`);
-          this.uiElements.heartbeatButton = this.container.querySelector(`#heartbeat-${this.id}`);
-          this.uiElements.statusButton = this.container.querySelector(`#status-${this.id}`);
-          this.uiElements.dataTransferButton = this.container.querySelector(
-            `#data_transfer-${this.id}`
-          );
-          // *** ADDED METER VALUE BUTTONS ***
-          this.uiElements.startMeterValuesButton = this.container.querySelector(
-            `#start-meter-values-${this.id}`
-          );
-          this.uiElements.resumeMeterValuesButton = this.container.querySelector(
-            `#resume-meter-values-${this.id}`
-          );
-          // Inputs
-          this.uiElements.connectorIdInput = this.container.querySelector(
-            `#connectorId-${this.id}`
-          );
-          this.uiElements.transToStpInput = this.container.querySelector(`#TransToStp-${this.id}`);
-          this.uiElements.endpointInput = this.container.querySelector(`#endp-${this.id}`);
-          this.uiElements.cpIdInput = this.container.querySelector(`#CP-${this.id}`);
-          this.uiElements.vendorInput = this.container.querySelector(
-            `#chargePointVendor-${this.id}`
-          );
-          this.uiElements.modelInput = this.container.querySelector(`#chargePointModel-${this.id}`);
-          this.uiElements.idTagInput = this.container.querySelector(`#idTag-${this.id}`);
-          this.uiElements.statusNotificationInput = this.container.querySelector(
-            `#statusNotification-${this.id}`
-          );
-          this.uiElements.meterNumMessagesInput = this.container.querySelector(
-            `#meterValuesNumberOfMessages-${this.id}`
-          );
-          this.uiElements.meterIntervalInput = this.container.querySelector(
-            `#meterValueSampleIntervalInSeconds-${this.id}`
-          );
-          this.uiElements.minSocInput = this.container.querySelector(`#minSoc-${this.id}`);
-          this.uiElements.maxSocInput = this.container.querySelector(`#maxSoc-${this.id}`);
-          this.uiElements.minEnergyInput = this.container.querySelector(`#minEnergy-${this.id}`);
-          this.uiElements.maxEnergyInput = this.container.querySelector(`#maxEnergy-${this.id}`);
-          this.uiElements.avPowerInput = this.container.querySelector(`#avPower-${this.id}`);
-          this.uiElements.avCurrentInput = this.container.querySelector(`#avCurrent-${this.id}`);
-          this.uiElements.dataTransferInput = this.container.querySelector(
-            `#datatrasfer-${this.id}`
-          ); // Assuming you add this input
-          // Indicators
-          this.uiElements.redIndicator = this.container.querySelector(`#red-${this.id}`);
-          this.uiElements.greenIndicator = this.container.querySelector(`#green-${this.id}`);
-          this.uiElements.yellowIndicator = this.container.querySelector(`#yellow-${this.id}`);
-          this.uiElements.blueIndicator = this.container.querySelector(`#blue-${this.id}`);
-          // Log and Transactions Area
-          this.uiElements.logArea = this.container.querySelector(`#console-${this.id}`);
-          this.uiElements.transactionsArea = this.container.querySelector(
-            `#transactions-${this.id}`
-          );
+          const q = (sel) => this.container.querySelector(sel);
+
+          // --- Shared (charge-point level) controls ---
+          this.uiElements.connectButton = q(`#connect-${this.id}`);
+          this.uiElements.heartbeatButton = q(`#heartbeat-${this.id}`);
+          this.uiElements.dataTransferButton = q(`#data_transfer-${this.id}`);
+
+          // --- Shared settings inputs ---
+          this.uiElements.endpointInput = q(`#endp-${this.id}`);
+          this.uiElements.cpIdInput = q(`#CP-${this.id}`);
+          this.uiElements.vendorInput = q(`#chargePointVendor-${this.id}`);
+          this.uiElements.modelInput = q(`#chargePointModel-${this.id}`);
+          this.uiElements.meterNumMessagesInput = q(`#meterValuesNumberOfMessages-${this.id}`);
+          this.uiElements.meterIntervalInput = q(`#meterValueSampleIntervalInSeconds-${this.id}`);
+          this.uiElements.minSocInput = q(`#minSoc-${this.id}`);
+          this.uiElements.maxSocInput = q(`#maxSoc-${this.id}`);
+          this.uiElements.minEnergyInput = q(`#minEnergy-${this.id}`);
+          this.uiElements.maxEnergyInput = q(`#maxEnergy-${this.id}`);
+          this.uiElements.avPowerInput = q(`#avPower-${this.id}`);
+          this.uiElements.avCurrentInput = q(`#avCurrent-${this.id}`);
+          this.uiElements.dataTransferInput = q(`#datatrasfer-${this.id}`);
+          this.uiElements.logArea = q(`#console-${this.id}`);
+
+          // --- Per-connector controls + indicators ---
+          this.CONNECTOR_IDS.forEach((cid) => {
+            const ui = this.connectors[cid].ui;
+            ui.authorizeButton = q(`#send-${this.id}-${cid}`);
+            ui.startButton = q(`#start-${this.id}-${cid}`);
+            ui.stopButton = q(`#stop-${this.id}-${cid}`);
+            ui.statusButton = q(`#status-${this.id}-${cid}`);
+            ui.startMeterValuesButton = q(`#start-meter-values-${this.id}-${cid}`);
+            ui.resumeMeterValuesButton = q(`#resume-meter-values-${this.id}-${cid}`);
+            ui.idTagInput = q(`#idTag-${this.id}-${cid}`);
+            ui.transToStpInput = q(`#TransToStp-${this.id}-${cid}`);
+            ui.statusNotificationInput = q(`#statusNotification-${this.id}-${cid}`);
+            ui.transactionsArea = q(`#transactions-${this.id}-${cid}`);
+            ui.redIndicator = q(`#red-${this.id}-${cid}`);
+            ui.greenIndicator = q(`#green-${this.id}-${cid}`);
+            ui.yellowIndicator = q(`#yellow-${this.id}-${cid}`);
+            ui.blueIndicator = q(`#blue-${this.id}-${cid}`);
+          });
         }
 
         _bindUIEvents() {
-          // Use arrow functions to maintain 'this' context
+          // Shared controls
           this.uiElements.connectButton.addEventListener("click", () => this.connect());
-          this.uiElements.authorizeButton.addEventListener("click", () => this.authorize());
-          this.uiElements.startButton.addEventListener("click", () => this.startTransaction());
-          this.uiElements.stopButton.addEventListener("click", () => this.stopTransaction());
           this.uiElements.heartbeatButton.addEventListener("click", () => this.sendHeartbeat());
-          this.uiElements.statusButton.addEventListener("click", () =>
-            this.sendStatusNotificationFromInput()
-          );
           this.uiElements.dataTransferButton.addEventListener("click", () =>
             this.sendDataTransfer()
           );
-          // *** ADDED METER VALUE BUTTON LISTENERS ***
-          this.uiElements.startMeterValuesButton.addEventListener("click", () =>
-            this.startSendingMeterValues(false)
-          ); // false = start new
-          this.uiElements.resumeMeterValuesButton.addEventListener("click", () =>
-            this.startSendingMeterValues(true)
-          ); // true = resume
 
-          // Update config object when inputs change (optional, or do it on action)
+          // Per-connector controls
+          this.CONNECTOR_IDS.forEach((cid) => {
+            const ui = this.connectors[cid].ui;
+            ui.authorizeButton.addEventListener("click", () => this.authorize(cid));
+            ui.startButton.addEventListener("click", () => this.startTransaction(cid));
+            ui.stopButton.addEventListener("click", () => this.stopTransaction(cid));
+            ui.statusButton.addEventListener("click", () =>
+              this.sendStatusNotificationFromInput(cid)
+            );
+            ui.startMeterValuesButton.addEventListener("click", () =>
+              this.startSendingMeterValues(cid, false)
+            );
+            ui.resumeMeterValuesButton.addEventListener("click", () =>
+              this.startSendingMeterValues(cid, true)
+            );
+          });
+
+          // Update config object when inputs change
           const inputs = this.container.querySelectorAll('input[type="text"]');
           inputs.forEach((input) => {
             input.addEventListener("change", () => this.loadConfigFromUI());
@@ -265,9 +281,33 @@
         }
 
         _getPersistenceKey() {
-          // Use Charge Point ID for storing state
           const cpId = this.config.chargePointId;
           return cpId ? `simulatorState_${cpId}` : null;
+        }
+
+        // --- Per-connector helpers ---
+
+        _stopMeterInterval(connectorId) {
+          const c = this.connectors[connectorId];
+          if (c && c.meterValueIntervalId !== null) {
+            clearInterval(c.meterValueIntervalId);
+            c.meterValueIntervalId = null;
+          }
+        }
+
+        _clearConnectorTransaction(connectorId) {
+          const c = this.connectors[connectorId];
+          if (!c) return;
+          c.currentTransactionId = null;
+          c.meterValuesArr = null;
+          c.meterValueIndex = 0;
+          this._stopMeterInterval(connectorId);
+          c.transactionIdToStop = null;
+          if (c.ui.transToStpInput) c.ui.transToStpInput.value = "";
+        }
+
+        _anyActiveTransaction() {
+          return this.CONNECTOR_IDS.some((cid) => this.connectors[cid].currentTransactionId);
         }
 
         // --- Public Methods ---
@@ -277,30 +317,31 @@
           const li = document.createElement("li");
           li.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
           this.uiElements.logArea.appendChild(li);
-          // Auto-scroll (optional)
           this.uiElements.logArea.scrollTop = this.uiElements.logArea.scrollHeight;
         }
 
-        updateIndicator(color) {
-          this.uiElements.redIndicator.style.display = "none";
-          this.uiElements.greenIndicator.style.display = "none";
-          this.uiElements.yellowIndicator.style.display = "none";
-          this.uiElements.blueIndicator.style.display = "none";
-          if (this.uiElements[`${color}Indicator`]) {
-            this.uiElements[`${color}Indicator`].style.display = "inline-block";
-          }
+        updateIndicator(connectorId, color) {
+          const c = this.connectors[connectorId];
+          if (!c) return;
+          ["red", "green", "yellow", "blue"].forEach((col) => {
+            const el = c.ui[`${col}Indicator`];
+            if (el) el.style.display = "none";
+          });
+          const target = c.ui[`${color}Indicator`];
+          if (target) target.style.display = "inline-block";
+        }
+
+        updateAllIndicators(color) {
+          this.CONNECTOR_IDS.forEach((cid) => this.updateIndicator(cid, color));
         }
 
         loadConfigFromUI() {
+          // Shared, charge-point level configuration
           this.config = {
-            connectorId: parseInt(this.uiElements.connectorIdInput.value) || 1,
-            transactionIdToStop: parseInt(this.uiElements.transToStpInput.value) || null,
             endpointUrl: this.uiElements.endpointInput.value.trim(),
             chargePointId: this.uiElements.cpIdInput.value.trim(),
             chargePointVendor: this.uiElements.vendorInput.value.trim(),
             chargePointModel: this.uiElements.modelInput.value.trim(),
-            idTag: this.uiElements.idTagInput.value.trim(),
-            statusNotification: this.uiElements.statusNotificationInput.value.trim() || "Available",
             meterNumMessages: parseInt(this.uiElements.meterNumMessagesInput.value) || 100,
             meterSampleInterval: parseInt(this.uiElements.meterIntervalInput.value) || 10,
             minSoc: parseInt(this.uiElements.minSocInput.value) || 3,
@@ -312,22 +353,39 @@
             dataTransferData: this.uiElements.dataTransferInput
               ? this.uiElements.dataTransferInput.value.trim()
               : "",
-            // Add other config fields as needed
           };
-          // Update transactionIdToStop if the input is empty but a transaction is active
-          if (!this.config.transactionIdToStop && this.state.currentTransactionId) {
-            this.config.transactionIdToStop = this.state.currentTransactionId;
-            this.uiElements.transToStpInput.value = this.state.currentTransactionId;
-          }
+
+          // Per-connector configuration
+          this.CONNECTOR_IDS.forEach((cid) => {
+            const c = this.connectors[cid];
+            c.config.idTag = c.ui.idTagInput.value.trim();
+            c.config.statusNotification =
+              c.ui.statusNotificationInput.value.trim() || "Available";
+            const stp = parseInt(c.ui.transToStpInput.value);
+            c.transactionIdToStop = isNaN(stp) ? null : stp;
+            // If the stop field is empty but a transaction is active, default to it
+            if (!c.transactionIdToStop && c.currentTransactionId) {
+              c.transactionIdToStop = c.currentTransactionId;
+              c.ui.transToStpInput.value = c.currentTransactionId;
+            }
+          });
         }
 
-        validateFields(fieldNames) {
+        // Resolve a named field from either the connector's config or the shared
+        // config, so validateFields can work for both scopes.
+        _resolveField(connectorId, fieldName) {
+          if (fieldName === "connectorId") return connectorId;
+          const c = connectorId != null ? this.connectors[connectorId] : null;
+          if (c && c.config && fieldName in c.config) return c.config[fieldName];
+          return this.config[fieldName];
+        }
+
+        validateFields(connectorId, fieldNames) {
           this.loadConfigFromUI(); // Ensure config is up-to-date
           const missing = [];
           fieldNames.forEach((fieldName) => {
-            if (!this.config[fieldName] && this.config[fieldName] !== 0) {
-              // Check for empty strings, null, undefined (allow 0)
-              // Convert camelCase to readable name (simple version)
+            const val = this._resolveField(connectorId, fieldName);
+            if (!val && val !== 0) {
               const readableName = fieldName
                 .replace(/([A-Z])/g, " $1")
                 .replace(/^./, (str) => str.toUpperCase());
@@ -335,7 +393,12 @@
             }
           });
           if (missing.length > 0) {
-            alert(`Simulator ${this.id}: Please fill the following fields: ${missing.join(", ")}.`);
+            const where = connectorId != null ? ` (Connector ${connectorId})` : "";
+            alert(
+              `Simulator ${this.id}${where}: Please fill the following fields: ${missing.join(
+                ", "
+              )}.`
+            );
             return false;
           }
           return true;
@@ -345,49 +408,45 @@
 
         loadPersistedState() {
           const key = this._getPersistenceKey();
+          this.CONNECTOR_IDS.forEach((cid) => {
+            this.connectors[cid].activeTransactions = [];
+          });
           if (!key) return;
 
-          const persistedData = localStorage.getItem(key);
-          if (persistedData) {
-            try {
-              const parsed = JSON.parse(persistedData);
-              if (parsed.currentTransactionId) {
-                this.state.currentTransactionId = parsed.currentTransactionId;
-                this.state.meterValuesArr = parsed.meterValuesArr;
-                this.state.meterValueIndex = parsed.meterValueIndex || 0;
-                // Load config values that affect meter sending from persisted state
-                this.config.meterSampleInterval =
-                  parsed.meterSampleInterval || this.config.meterSampleInterval;
-                this.config.meterNumMessages = parsed.meterValuesArr
-                  ? parsed.meterValuesArr.length
-                  : this.config.meterNumMessages;
-                // Also load other relevant config if needed (min/max soc/energy etc) - depends if they should be persisted
-                this.state.isResuming = true; // Mark for resumption check on connect
-                this.state.activeTransactions = parsed.activeTransactions || [
-                  parsed.currentTransactionId,
-                ]; // Restore list
-
-                // Update UI to reflect loaded state
-                // this.uiElements.transToStpInput.value = this.state.currentTransactionId; // MODIFIED: Do not auto-fill this on load
-                this.uiElements.meterIntervalInput.value = this.config.meterSampleInterval;
-                this.uiElements.meterNumMessagesInput.value = this.config.meterNumMessages;
-                // Update other UI fields if their config was loaded from persistence
-
+          const raw = localStorage.getItem(key);
+          if (!raw) {
+            this.log("No persisted state found.");
+            return;
+          }
+          try {
+            const parsed = JSON.parse(raw);
+            const conns = parsed.connectors || {};
+            let anyLoaded = false;
+            this.CONNECTOR_IDS.forEach((cid) => {
+              const saved = conns[cid] || conns[String(cid)];
+              const c = this.connectors[cid];
+              if (saved && saved.currentTransactionId) {
+                c.currentTransactionId = saved.currentTransactionId;
+                c.meterValuesArr = saved.meterValuesArr;
+                c.meterValueIndex = saved.meterValueIndex || 0;
+                c.activeTransactions = saved.activeTransactions || [saved.currentTransactionId];
+                c.isResuming = true;
+                anyLoaded = true;
                 this.log(
-                  `Loaded persisted charging state for Tx: ${this.state.currentTransactionId}, next meter index: ${this.state.meterValueIndex}`
+                  `Loaded persisted state for connector ${cid}: Tx ${c.currentTransactionId}, next meter index ${c.meterValueIndex}`
                 );
               } else {
-                this.log("No active transaction found in persisted state.");
-                this.state.activeTransactions = []; // Ensure list is empty if no tx loaded
+                c.activeTransactions = [];
               }
-            } catch (e) {
-              this.log(`Error parsing persisted state: ${e}. Clearing.`);
-              localStorage.removeItem(key);
-              this.state.activeTransactions = [];
+            });
+            if (parsed.meterSampleInterval) {
+              this.config.meterSampleInterval = parsed.meterSampleInterval;
+              this.uiElements.meterIntervalInput.value = parsed.meterSampleInterval;
             }
-          } else {
-            this.log("No persisted state found.");
-            this.state.activeTransactions = [];
+            if (!anyLoaded) this.log("No active transaction found in persisted state.");
+          } catch (e) {
+            this.log(`Error parsing persisted state: ${e}. Clearing.`);
+            localStorage.removeItem(key);
           }
         }
 
@@ -395,34 +454,37 @@
           const key = this._getPersistenceKey();
           if (!key) return;
 
-          if (this.state.currentTransactionId && this.state.meterValuesArr) {
-            const stateToPersist = {
-              currentTransactionId: this.state.currentTransactionId,
-              meterValuesArr: this.state.meterValuesArr, // The generated array
-              meterValueIndex: this.state.meterValueIndex, // Next index to send
-              meterSampleInterval: this.config.meterSampleInterval, // Interval used
-              // Persist other config used for generation? Optional.
-              // minSoc: this.config.minSoc, maxSoc: this.config.maxSoc, ...
-              activeTransactions: this.state.activeTransactions, // List of active Tx IDs
-            };
-            localStorage.setItem(key, JSON.stringify(stateToPersist));
-            this.log(
-              `Persisted state for Tx ${this.state.currentTransactionId} at index ${this.state.meterValueIndex}`
-            );
+          const data = {
+            connectors: {},
+            meterSampleInterval: this.config.meterSampleInterval,
+          };
+          let anyActive = false;
+          this.CONNECTOR_IDS.forEach((cid) => {
+            const c = this.connectors[cid];
+            if (c.currentTransactionId && c.meterValuesArr) {
+              anyActive = true;
+              data.connectors[cid] = {
+                currentTransactionId: c.currentTransactionId,
+                meterValuesArr: c.meterValuesArr,
+                meterValueIndex: c.meterValueIndex,
+                activeTransactions: c.activeTransactions,
+              };
+            }
+          });
+
+          if (anyActive) {
+            localStorage.setItem(key, JSON.stringify(data));
+            this.log(`Persisted state for ${Object.keys(data.connectors).length} active connector(s).`);
           } else {
-            // If no active transaction, ensure persisted state is cleared
             this.clearPersistedState();
           }
         }
 
         clearPersistedState() {
           const key = this._getPersistenceKey();
-          if (key) {
-            // Only remove if it exists, prevents unnecessary log messages
-            if (localStorage.getItem(key)) {
-              localStorage.removeItem(key);
-              this.log(`Cleared persisted state for CP ${this.config.chargePointId}`);
-            }
+          if (key && localStorage.getItem(key)) {
+            localStorage.removeItem(key);
+            this.log(`Cleared persisted state for CP ${this.config.chargePointId}`);
           }
         }
 
@@ -430,12 +492,12 @@
 
         connect(isReconnectAttempt = false) {
           if (!isReconnectAttempt) {
-            this._clearReconnectAttempts(); // User-initiated connection, reset any prior auto-reconnects
+            this._clearReconnectAttempts();
           }
 
-          this.loadConfigFromUI(); // Load latest config from UI
+          this.loadConfigFromUI();
           if (
-            !this.validateFields([
+            !this.validateFields(null, [
               "endpointUrl",
               "chargePointId",
               "chargePointVendor",
@@ -445,46 +507,39 @@
             return;
           }
 
-          if (this.state.websocket && !isReconnectAttempt) {
-            // Only if user clicks "Disconnect"
+          if (this.state.websocket) {
             this.log("Disconnecting (user initiated)...");
             this.disconnect(3001); // User initiated disconnect code
             return;
           }
 
-          if (this.state.websocket) {
-            this.log("Disconnecting...");
-            this.disconnect(3001); // User initiated disconnect
-            return;
-          }
-
-          // Load persisted state *again* right before connecting, using the potentially updated CP ID
+          // Load persisted state again right before connecting (CP Id may have changed)
           this.loadPersistedState();
-          this.updateTransactionsUI(); // Update UI based on loaded state
+          this.CONNECTOR_IDS.forEach((cid) => this.updateTransactionsUI(cid));
 
           const url = `${this.config.endpointUrl}${this.config.chargePointId}`;
           this.log(`Connecting to ${url}...`);
-          this.updateIndicator("blue"); // Connecting status
+          this.updateAllIndicators("blue"); // Connecting status
           this.uiElements.connectButton.textContent = "Connecting...";
-          this.uiElements.connectButton.disabled = true; // Prevent double clicks
+          this.uiElements.connectButton.disabled = true;
 
           try {
             this.state.websocket = new WebSocket(url, ["ocpp1.6", "ocpp1.5"]);
           } catch (e) {
             this.log(`Error creating WebSocket: ${e}`);
-            this.updateIndicator("red");
+            this.updateAllIndicators("red");
             this.uiElements.connectButton.textContent = "Connect";
             this.uiElements.connectButton.disabled = false;
             return;
           }
 
-          this.state.websocket.onopen = (event) => {
+          this.state.websocket.onopen = () => {
             this.log("WebSocket Opened");
-            this._clearReconnectAttempts(); // Successfully connected, reset any reconnection attempts
+            this._clearReconnectAttempts();
             this.state.isConnected = true;
             this.uiElements.connectButton.textContent = "Disconnect";
             this.uiElements.connectButton.disabled = false;
-            this.updateIndicator("yellow"); // Connected, waiting for Boot response
+            this.updateAllIndicators("yellow"); // Connected, waiting for Boot response
             this.sendBootNotification();
           };
 
@@ -494,108 +549,90 @@
 
           this.state.websocket.onclose = (event) => {
             this.log(`WebSocket Closed: Code=${event.code}, Reason=${event.reason || "N/A"}`);
-            const wasConnected = this.state.isConnected;
             this.state.isConnected = false;
-            this.state.websocket = null; // Important: nullify the websocket object
+            this.state.websocket = null;
             clearInterval(this.state.heartbeatIntervalId);
             this.state.heartbeatIntervalId = null;
+            this.state.pendingRequests = {}; // Drop in-flight request correlation
 
-            // --- Preemptive check for pending StopTransaction ---
-            if (
-              this.state.pendingStopConfirmationForTxId &&
-              this.state.pendingStopConfirmationForTxId === this.state.currentTransactionId
-            ) {
-              this.log(
-                `Disconnected while StopTransaction was pending for Tx ${this.state.pendingStopConfirmationForTxId}. Clearing local and persisted state for this transaction.`
-              );
+            // --- Preemptive check for any connector with a pending StopTransaction ---
+            let handledPendingStop = false;
+            this.CONNECTOR_IDS.forEach((cid) => {
+              const c = this.connectors[cid];
+              if (
+                c.pendingStopConfirmationForTxId &&
+                c.pendingStopConfirmationForTxId === c.currentTransactionId
+              ) {
+                this.log(
+                  `Disconnected while StopTransaction was pending for Tx ${c.pendingStopConfirmationForTxId} (Connector ${cid}). Clearing local and persisted state for this transaction.`
+                );
+                const pendingTxId = c.pendingStopConfirmationForTxId;
+                this.removeTransactionFromList(cid, pendingTxId);
+                this._clearConnectorTransaction(cid);
+                c.pendingStopConfirmationForTxId = null;
+                handledPendingStop = true;
+              }
+            });
 
-              // Clear local transaction state immediately
-              const pendingTxId = this.state.pendingStopConfirmationForTxId;
-              this.state.currentTransactionId = null;
-              this.state.meterValuesArr = null;
-              this.state.meterValueIndex = 0;
-              clearInterval(this.state.meterValueIntervalId);
-              this.state.meterValueIntervalId = null;
-              if (this.uiElements.transToStpInput) this.uiElements.transToStpInput.value = "";
-              this.config.transactionIdToStop = null;
+            // Stop all meter intervals
+            this.CONNECTOR_IDS.forEach((cid) => this._stopMeterInterval(cid));
 
-              this.clearPersistedState(); // Remove from localStorage
-              this.removeTransactionFromList(pendingTxId); // Update UI list
-              this.state.pendingStopConfirmationForTxId = null; // Clear the flag
-
-              // Update UI to disconnected state after cleaning up the stopped transaction
-              this.updateIndicator("red");
+            if (handledPendingStop) {
+              this.persistState(); // Persist remaining active connectors (or clears if none)
+              this.updateAllIndicators("red");
               this.uiElements.connectButton.textContent = "Connect";
               this.uiElements.connectButton.disabled = false;
-              this._clearReconnectAttempts(); // Do not attempt to reconnect in this specific scenario immediately, let user reconnect manually or standard logic handle next time.
-              return; // Exit onclose early as we've handled this specific state.
+              this._clearReconnectAttempts();
+              return;
             }
-            // --- End of preemptive check ---
 
             // Special codes for controlled disconnections
-            // 3001: User clicked "Disconnect" button or connect() initiated a disconnect before reconnecting.
-            // 3002: Disconnect after a Reset command.
-            // 1000: Normal closure (can be server or client initiated clean close).
             const controlledDisconnectCodes = [1000, 3001, 3002];
             const isControlledDisconnect = controlledDisconnectCodes.includes(event.code);
 
-            // Stop meter sending interval
-            clearInterval(this.state.meterValueIntervalId);
-            this.state.meterValueIntervalId = null;
-
             if (isControlledDisconnect) {
               this.log("Controlled disconnect. Auto-reconnection will not be attempted.");
-              this._clearReconnectAttempts(); // Ensure no stray timers or pending attempts
-              // Persist state on clean disconnect *if* a transaction was active,
-              // unless it was a Hard Reset (which clears state before disconnect).
-              if (this.state.currentTransactionId && event.code !== 3002) {
+              this._clearReconnectAttempts();
+              if (this._anyActiveTransaction() && event.code !== 3002) {
                 this.persistState();
               }
-              // Update UI to disconnected state if not already handled by _clearReconnectAttempts or connect()
-              this.updateIndicator("red");
+              this.updateAllIndicators("red");
               this.uiElements.connectButton.textContent = "Connect";
               this.uiElements.connectButton.disabled = false;
             } else {
-              // Unexpected disconnect or initial connection failure
               this.log("Unexpected disconnect or initial connection failure.");
-              if (this.state.currentTransactionId) {
+              if (this._anyActiveTransaction()) {
                 this.persistState();
                 this.log("Persisted active transaction state due to unexpected disconnect.");
               } else {
                 this.log("No active transaction to persist for unexpected disconnect.");
               }
-              this._attemptReconnect(); // Attempt to reconnect
+              this._attemptReconnect();
             }
 
-            // Fallback UI update if not handled by reconnection logic (e.g., max attempts reached and _attemptReconnect updated it)
-            // This ensures the UI is correctly set if _attemptReconnect doesn't kick in or finishes.
+            // Fallback UI update
             if (
               this.state.reconnectAttempts >= this.state.maxReconnectAttempts &&
               !this.state.reconnectTimerId
             ) {
-              this.updateIndicator("red");
+              this.updateAllIndicators("red");
               this.uiElements.connectButton.textContent = "Connect";
               this.uiElements.connectButton.disabled = false;
             } else if (isControlledDisconnect) {
-              // Ensure UI is set for controlled disconnects
-              this.updateIndicator("red");
+              this.updateAllIndicators("red");
               this.uiElements.connectButton.textContent = "Connect";
               this.uiElements.connectButton.disabled = false;
             }
           };
 
           this.state.websocket.onerror = (event) => {
-            // Log the error. The onclose event will typically follow and handle reconnection logic.
             this.log(`WebSocket Error: ${event.type || "Unknown error"}`);
-            // UI updates are primarily managed by onclose and _attemptReconnect.
-            // If onclose isn't triggered or doesn't start reconnection, this ensures UI is reset.
-            // This check is a safeguard.
             if (
               !this.state.isConnected &&
               this.state.reconnectAttempts === 0 &&
               !this.state.reconnectTimerId
             ) {
-              this.updateIndicator("red");
+              this.updateAllIndicators("red");
               this.uiElements.connectButton.textContent = "Connect";
               this.uiElements.connectButton.disabled = false;
             }
@@ -603,45 +640,37 @@
         }
 
         disconnect(code = 1000) {
-          this._clearReconnectAttempts(); // Stop any scheduled auto-reconnects on manual/programmatic disconnect
-          // 1000 = Normal closure
+          this._clearReconnectAttempts();
           if (this.state.websocket) {
-            // Stop sending meter values *before* closing
-            clearInterval(this.state.meterValueIntervalId);
-            this.state.meterValueIntervalId = null;
-
-            // Persist state *before* disconnecting if currently charging
-            if (this.state.currentTransactionId) {
+            this.CONNECTOR_IDS.forEach((cid) => this._stopMeterInterval(cid));
+            if (this._anyActiveTransaction()) {
               this.persistState();
             }
-
             this.state.websocket.close(code);
-            // onclose handler will manage UI updates and state cleanup
           } else {
-            // If already disconnected, ensure UI is correct
             this.state.isConnected = false;
             this.uiElements.connectButton.textContent = "Connect";
             this.uiElements.connectButton.disabled = false;
-            this.updateIndicator("red");
+            this.updateAllIndicators("red");
             clearInterval(this.state.heartbeatIntervalId);
             this.state.heartbeatIntervalId = null;
-            clearInterval(this.state.meterValueIntervalId);
-            this.state.meterValueIntervalId = null;
+            this.CONNECTOR_IDS.forEach((cid) => this._stopMeterInterval(cid));
           }
         }
 
-        sendRequest(action, payload) {
+        sendRequest(action, payload, connectorId = null) {
           if (!this.state.websocket || this.state.websocket.readyState !== WebSocket.OPEN) {
             this.log(`Cannot send ${action}: WebSocket not open.`);
-            return false; // Indicate failure
+            return false;
           }
           const messageId = this._generateUniqueId();
           const message = [2, messageId, action, payload];
           const jsonMessage = JSON.stringify(message);
-          this.log(`TX: ${jsonMessage}`);
-          this.state.lastSentAction = action; // Track for response handling
+          this.log(`TX${connectorId ? ` [C${connectorId}]` : ""}: ${jsonMessage}`);
+          // Record the action + connector so the response can be routed correctly.
+          this.state.pendingRequests[messageId] = { action, connectorId };
           this.state.websocket.send(jsonMessage);
-          return true; // Indicate success
+          return true;
         }
 
         sendResponse(messageId, payload) {
@@ -674,26 +703,35 @@
             const messageId = msg[1];
 
             if (messageTypeId === 3) {
-              // CallResult (Response to our request)
+              // CallResult (Response to our request) - route by messageId
               const payload = msg[2];
-              this.handleCallResult(this.state.lastSentAction, messageId, payload); // Pass messageId
+              const pending = this.state.pendingRequests[messageId];
+              delete this.state.pendingRequests[messageId];
+              const action = pending ? pending.action : null;
+              const connectorId = pending ? pending.connectorId : null;
+              this.handleCallResult(action, messageId, payload, connectorId);
             } else if (messageTypeId === 2) {
               // Call (Command from server)
               const action = msg[2];
               const payload = msg[3];
               this.handleCall(messageId, action, payload);
             } else if (messageTypeId === 4) {
-              // CallError (Error response from server)
+              // CallError (Error response from server) - route by messageId
               const errorCode = msg[2];
               const errorDescription = msg[3];
               const errorDetails = msg[4];
+              const pending = this.state.pendingRequests[messageId];
+              delete this.state.pendingRequests[messageId];
+              const action = pending ? pending.action : null;
+              const connectorId = pending ? pending.connectorId : null;
               this.handleCallError(
-                this.state.lastSentAction,
+                action,
                 messageId,
                 errorCode,
                 errorDescription,
-                errorDetails
-              ); // Pass messageId
+                errorDetails,
+                connectorId
+              );
             }
           } catch (e) {
             this.log(`Error processing message: ${e}`);
@@ -701,10 +739,11 @@
           }
         }
 
-        handleCallResult(action, messageId, payload) {
-          // Added messageId
+        handleCallResult(action, messageId, payload, connectorId) {
           this.log(
-            `Response received for ${action} (ID: ${messageId}): ${JSON.stringify(payload)}`
+            `Response received for ${action || "Unknown"}${
+              connectorId ? ` [C${connectorId}]` : ""
+            } (ID: ${messageId}): ${JSON.stringify(payload)}`
           );
           switch (action) {
             case "BootNotification":
@@ -714,96 +753,104 @@
                   `Boot successful. Heartbeat interval: ${interval}s. Current time: ${payload.currentTime}`
                 );
                 this.startHeartbeat(interval * 1000);
-                this.updateIndicator("yellow"); // Available
 
-                // *** RESUMPTION LOGIC ***
-                if (
-                  this.state.isResuming &&
-                  this.state.currentTransactionId &&
-                  this.state.meterValuesArr
-                ) {
-                  this.log(
-                    `Attempting to resume transaction ${this.state.currentTransactionId} from index ${this.state.meterValueIndex}`
-                  );
-                  // Send StatusNotification Charging to confirm state, but don't update the UI field
-                  this.sendStatusNotification("Charging", "NoError", null, false);
-                  // *** NOTE: Removed automatic startSendingMeterValues here. Use Resume button or keep it if preferred. ***
-                  // this.startSendingMeterValues(true); // true = resume
-                  this.updateIndicator("green"); // Show charging (since we loaded a charging state)
-                  this.log(
-                    "Resumed charging state loaded. Use 'Resume Meter Values' button to continue sending."
-                  );
-                } else {
-                  // Not resuming, send initial status based on config (and update UI field by default)
-                  this.sendStatusNotification(
-                    this.config.statusNotification || "Available",
-                    "NoError",
-                    null,
-                    false
-                  );
-                }
-                this.state.isResuming = false; // Clear resume flag after check
+                // For each connector, either resume or send initial status
+                this.CONNECTOR_IDS.forEach((cid) => {
+                  const c = this.connectors[cid];
+                  if (c.isResuming && c.currentTransactionId && c.meterValuesArr) {
+                    this.log(
+                      `Resuming transaction ${c.currentTransactionId} on connector ${cid} from index ${c.meterValueIndex}`
+                    );
+                    this.sendStatusNotification(cid, "Charging", "NoError", false);
+                    this.updateIndicator(cid, "green");
+                    this.log(
+                      `Connector ${cid}: resumed charging state. Use 'Resume Meter Values' to continue sending.`
+                    );
+                  } else {
+                    this.sendStatusNotification(
+                      cid,
+                      c.config.statusNotification || "Available",
+                      "NoError",
+                      false
+                    );
+                    this.updateIndicator(cid, "yellow");
+                  }
+                  c.isResuming = false;
+                });
               } else {
-                this.log(`BootNotification rejected: ${payload.status}. Retrying? Closing?`);
-                // Handle rejection (e.g., close connection, retry after delay)
+                this.log(`BootNotification rejected: ${payload.status}.`);
                 this.disconnect();
               }
               break;
 
             case "Authorize":
-              this.log(`Authorization status: ${payload.idTagInfo.status}`);
-              // Can update UI or trigger next step based on status
+              this.log(
+                `Authorization status${connectorId ? ` [C${connectorId}]` : ""}: ${
+                  payload.idTagInfo ? payload.idTagInfo.status : "Unknown"
+                }`
+              );
               break;
 
-            case "StartTransaction":
+            case "StartTransaction": {
+              const c = this.connectors[connectorId];
+              if (!c) {
+                this.log(`StartTransaction result for unknown connector ${connectorId}.`);
+                break;
+              }
               if (payload.idTagInfo && payload.idTagInfo.status === "Accepted") {
-                this.state.currentTransactionId = payload.transactionId;
-                this.log(`Transaction ${this.state.currentTransactionId} started.`);
-                this.uiElements.transToStpInput.value = this.state.currentTransactionId; // Update stop field
-                this.config.transactionIdToStop = this.state.currentTransactionId; // Update config value
-                this.addTransactionToList(this.state.currentTransactionId);
-                this.sendStatusNotification("Charging");
-                // *** NOTE: Removed automatic startSendingMeterValues here. Use Start button or keep it if preferred. ***
-                // this.startSendingMeterValues(false); // false = start new
-                this.updateIndicator("green");
-                this.log("Transaction started. Use 'Start Meter Values' button to begin sending.");
+                c.currentTransactionId = payload.transactionId;
+                this.log(
+                  `Transaction ${c.currentTransactionId} started on connector ${connectorId}.`
+                );
+                c.ui.transToStpInput.value = c.currentTransactionId;
+                c.transactionIdToStop = c.currentTransactionId;
+                this.addTransactionToList(connectorId, c.currentTransactionId);
+                // OCPP 1.6 status transition: Preparing -> Charging (updates indicator)
+                this.sendStatusNotification(connectorId, "Charging");
+                this.log(
+                  `Connector ${connectorId}: transaction started. Use 'Start Meter Values' to begin sending.`
+                );
               } else {
                 const reason = payload.idTagInfo ? payload.idTagInfo.status : "Rejected by server";
-                this.log(`StartTransaction failed: ${reason}`);
-                this.updateIndicator("yellow"); // Or appropriate error state
+                this.log(`StartTransaction failed on connector ${connectorId}: ${reason}`);
+                // Rejected start returns the connector to Available (Preparing -> Available)
+                this.sendStatusNotification(connectorId, "Available");
               }
               break;
+            }
 
-            case "StopTransaction":
-              // Optional: Check payload.idTagInfo.status if present
-              const stoppedTxId = this.state.currentTransactionId; // Get ID before clearing
-              this.log(`StopTransaction confirmed for Tx ${stoppedTxId}.`);
-              this.clearPersistedState(); // Clear state on successful stop confirmation
-              this.removeTransactionFromList(stoppedTxId); // Remove from UI list
-              // Clear transaction-related state
-              this.state.currentTransactionId = null;
-              this.state.meterValuesArr = null;
-              this.state.meterValueIndex = 0;
-              clearInterval(this.state.meterValueIntervalId); // Ensure meter interval is stopped
-              this.state.meterValueIntervalId = null;
-              this.uiElements.transToStpInput.value = ""; // Clear stop field
-              this.config.transactionIdToStop = null; // Clear config value
-              this.sendStatusNotification("Finishing"); // Optional: Send Finishing then Available
-              setTimeout(() => this.sendStatusNotification("Available"), 2000); // Delay Available status
-              this.updateIndicator("yellow");
-              this.state.pendingStopConfirmationForTxId = null; // Clear pending flag
+            case "StopTransaction": {
+              const c = this.connectors[connectorId];
+              if (!c) {
+                this.log(`StopTransaction result for unknown connector ${connectorId}.`);
+                break;
+              }
+              const stoppedTxId = c.currentTransactionId;
+              this.log(
+                `StopTransaction confirmed for Tx ${stoppedTxId} on connector ${connectorId}.`
+              );
+              this.removeTransactionFromList(connectorId, stoppedTxId);
+              this._clearConnectorTransaction(connectorId);
+              this.persistState();
+              this.sendStatusNotification(connectorId, "Finishing");
+              setTimeout(() => this.sendStatusNotification(connectorId, "Available"), 2000);
+              this.updateIndicator(connectorId, "yellow");
+              c.pendingStopConfirmationForTxId = null;
               break;
+            }
 
             case "Heartbeat":
               this.log(`Heartbeat acknowledged. Server time: ${payload.currentTime}`);
               break;
 
             case "MeterValues":
-              this.log(`MeterValues acknowledged.`);
+              this.log(`MeterValues acknowledged${connectorId ? ` [C${connectorId}]` : ""}.`);
               break;
 
             case "StatusNotification":
-              this.log(`StatusNotification acknowledged.`);
+              this.log(
+                `StatusNotification acknowledged${connectorId ? ` [C${connectorId}]` : ""}.`
+              );
               break;
 
             case "DataTransfer":
@@ -818,121 +865,125 @@
           }
         }
 
-        handleCallError(action, messageId, errorCode, errorDescription, errorDetails) {
-          // Added messageId
+        handleCallError(action, messageId, errorCode, errorDescription, errorDetails, connectorId) {
           this.log(
-            `Error response received for ${
-              action || "Unknown Action"
+            `Error response received for ${action || "Unknown Action"}${
+              connectorId ? ` [C${connectorId}]` : ""
             } (ID: ${messageId}): ${errorCode} - ${errorDescription} ${JSON.stringify(
               errorDetails
             )}`
           );
-          // Potentially update UI based on error (e.g., if StartTransaction failed)
-          if (action === "StartTransaction") {
-            this.updateIndicator("yellow"); // Back to available/idle
+          if (action === "StartTransaction" && connectorId) {
+            this.updateIndicator(connectorId, this.state.isConnected ? "yellow" : "red");
           }
-          // If the error was for a StopTransaction, clear the pending flag
-          if (action === "StopTransaction") {
-            this.state.pendingStopConfirmationForTxId = null;
-            this.log(`Cleared pending stop flag due to error for Tx ${messageId}.`); // Assuming messageId might relate to the TxID or log it if available
+          if (action === "StopTransaction" && connectorId) {
+            const c = this.connectors[connectorId];
+            if (c) c.pendingStopConfirmationForTxId = null;
+            this.log(`Cleared pending stop flag due to error for connector ${connectorId}.`);
           }
-          // Add more specific error handling if needed
         }
 
         handleCall(messageId, action, payload) {
           this.log(`Command received: ${action}, Payload: ${JSON.stringify(payload)}`);
           switch (action) {
-            case "RemoteStartTransaction":
-              // Basic implementation: Accept if idle, use provided tag/connector
-              if (!this.state.currentTransactionId) {
+            case "RemoteStartTransaction": {
+              // Determine target connector: use the requested one, otherwise the
+              // first idle connector.
+              let targetConnector =
+                payload.connectorId && payload.connectorId > 0 ? payload.connectorId : null;
+              if (targetConnector === null) {
+                targetConnector =
+                  this.CONNECTOR_IDS.find((cid) => !this.connectors[cid].currentTransactionId) ||
+                  this.CONNECTOR_IDS[0];
+              }
+              const c = this.connectors[targetConnector];
+              if (c && !c.currentTransactionId && payload.idTag) {
                 this.log(
-                  `Accepting RemoteStartTransaction for connector ${
-                    payload.connectorId || "default"
-                  } and idTag ${payload.idTag}`
+                  `Accepting RemoteStartTransaction for connector ${targetConnector} with idTag ${payload.idTag}`
                 );
                 this.sendResponse(messageId, { status: "Accepted" });
-                // Update config and UI temporarily
-                const originalIdTag = this.config.idTag;
-                const originalConnectorId = this.config.connectorId;
-                this.config.idTag = payload.idTag;
-                this.uiElements.idTagInput.value = payload.idTag;
-                if (payload.connectorId && payload.connectorId > 0) {
-                  this.config.connectorId = payload.connectorId;
-                  this.uiElements.connectorIdInput.value = payload.connectorId;
-                }
-                // Initiate the start transaction locally
-                this.startTransaction(); // This will now log "Use Start Meter Values button"
-                // Restore original config after short delay (or handle state better)
-                setTimeout(() => {
-                  this.config.idTag = originalIdTag;
-                  this.uiElements.idTagInput.value = originalIdTag;
-                  this.config.connectorId = originalConnectorId;
-                  this.uiElements.connectorIdInput.value = originalConnectorId;
-                }, 500);
+                // Start locally using the CSMS-provided idTag. The idTag is applied
+                // to the connector (config + UI) for the whole session, and
+                // startTransaction drives the Preparing -> Charging status flow.
+                this.startTransaction(targetConnector, payload.idTag);
               } else {
+                const reason = !c
+                  ? "invalid connector"
+                  : c.currentTransactionId
+                  ? "connector busy"
+                  : "missing idTag";
                 this.log(
-                  `Rejecting RemoteStartTransaction: Already charging (Tx ${this.state.currentTransactionId})`
+                  `Rejecting RemoteStartTransaction (connector ${targetConnector}): ${reason}.`
                 );
                 this.sendResponse(messageId, { status: "Rejected" });
               }
               break;
+            }
 
-            case "RemoteStopTransaction":
+            case "RemoteStopTransaction": {
               const txIdToStop = payload.transactionId;
-              if (txIdToStop === this.state.currentTransactionId) {
-                this.log(`Accepting RemoteStopTransaction for current transaction ${txIdToStop}.`);
+              const cid = this.CONNECTOR_IDS.find(
+                (id) => this.connectors[id].currentTransactionId === txIdToStop
+              );
+              if (cid) {
+                this.log(
+                  `Accepting RemoteStopTransaction for Tx ${txIdToStop} on connector ${cid}.`
+                );
                 this.sendResponse(messageId, { status: "Accepted" });
-                // Initiate the stop transaction locally
-                this.stopTransaction(true); // Pass flag indicating remote stop
+                this.stopTransaction(cid, true);
               } else {
                 this.log(
-                  `Rejecting RemoteStopTransaction: Tx ID ${txIdToStop} not active (current is ${this.state.currentTransactionId}).`
+                  `Rejecting RemoteStopTransaction: Tx ID ${txIdToStop} not active on any connector.`
                 );
                 this.sendResponse(messageId, { status: "Rejected" });
               }
               break;
+            }
 
             case "Reset":
               this.log(`Processing Reset command (Type: ${payload.type})`);
               this.sendResponse(messageId, { status: "Accepted" });
-              // Simulate reset - disconnect after a short delay
               setTimeout(() => {
                 this.log(`Performing ${payload.type} reset... disconnecting.`);
-                // For a 'Hard' reset, clear localStorage before disconnecting
                 if (payload.type === "Hard") {
                   this.clearPersistedState();
                 }
-                this.disconnect(3002); // Use a specific code for reset
-                // Optionally reload the page or re-initialize the simulator instance
+                this.disconnect(3002);
               }, 1000);
               break;
 
-            case "ChangeAvailability":
+            case "ChangeAvailability": {
               this.log(
                 `Processing ChangeAvailability for Connector ${payload.connectorId} to ${payload.type}`
               );
-              // In a real CP, you'd change internal state and maybe hardware.
-              // Here, we just acknowledge and maybe update the default status.
-              if (payload.connectorId === 0 || payload.connectorId === this.config.connectorId) {
+              // connectorId 0 addresses the whole charge point (all connectors)
+              const targets =
+                payload.connectorId === 0
+                  ? this.CONNECTOR_IDS
+                  : this.connectors[payload.connectorId]
+                  ? [payload.connectorId]
+                  : [];
+              if (targets.length > 0) {
                 this.sendResponse(messageId, { status: "Accepted" });
-                let newStatus = "Available"; // Default to Operative
-                if (payload.type === "Inoperative") {
-                  newStatus = "Unavailable"; // Example state change
-                }
-                this.config.statusNotification = newStatus;
-                this.uiElements.statusNotificationInput.value = newStatus;
-                // Send StatusNotification only if not currently charging or if becoming inoperative
-                if (!this.state.currentTransactionId || newStatus === "Unavailable") {
-                  this.sendStatusNotification(newStatus);
-                } else {
-                  this.log(
-                    `Availability changed to ${newStatus}, but currently charging. StatusNotification not sent.`
-                  );
-                }
+                const newStatus = payload.type === "Inoperative" ? "Unavailable" : "Available";
+                targets.forEach((cid) => {
+                  const c = this.connectors[cid];
+                  c.config.statusNotification = newStatus;
+                  c.ui.statusNotificationInput.value = newStatus;
+                  if (!c.currentTransactionId || newStatus === "Unavailable") {
+                    this.sendStatusNotification(cid, newStatus);
+                  } else {
+                    this.log(
+                      `Connector ${cid}: availability changed to ${newStatus}, but currently charging. StatusNotification not sent.`
+                    );
+                  }
+                });
               } else {
-                this.sendResponse(messageId, { status: "Rejected" }); // Wrong connector
+                this.sendResponse(messageId, { status: "Rejected" }); // Unknown connector
               }
               break;
+            }
+
             case "SetChargingProfile":
               this.log(`Processing SetChargingProfile for Connector ${payload.connectorId}`);
               this.sendResponse(messageId, { status: "Accepted" });
@@ -955,38 +1006,24 @@
               this.sendResponse(messageId, { status: "Accepted" });
               break;
 
-            case "GetConfiguration":
+            case "GetConfiguration": {
               this.log(`Processing GetConfiguration command`);
-              // Return some basic configuration keys
               const configKeys = payload.key || [];
               const configurationKey = [
-                {
-                  key: "HeartbeatInterval",
-                  readonly: false,
-                  value: "60",
-                },
-                {
-                  key: "MeterValueSampleInterval",
-                  readonly: false,
-                  value: "10",
-                },
-                {
-                  key: "NumberOfConnectors",
-                  readonly: true,
-                  value: "1",
-                },
+                { key: "HeartbeatInterval", readonly: false, value: "60" },
+                { key: "MeterValueSampleInterval", readonly: false, value: "10" },
+                { key: "NumberOfConnectors", readonly: true, value: "2" },
               ];
-
               let filteredKeys = configurationKey;
               if (configKeys.length > 0) {
                 filteredKeys = configurationKey.filter((config) => configKeys.includes(config.key));
               }
-
               this.sendResponse(messageId, {
                 configurationKey: filteredKeys,
                 unknownKey: [],
               });
               break;
+            }
 
             case "DataTransfer":
               this.log(
@@ -1044,12 +1081,7 @@
                 chargingSchedule: {
                   duration: payload.duration,
                   chargingRateUnit: "W",
-                  chargingSchedulePeriod: [
-                    {
-                      startPeriod: 0,
-                      limit: 7000,
-                    },
-                  ],
+                  chargingSchedulePeriod: [{ startPeriod: 0, limit: 7000 }],
                 },
               });
               break;
@@ -1062,7 +1094,6 @@
               );
               this.sendResponse(messageId, { status: "Accepted" });
 
-              // Simulate triggering the requested message after a short delay
               setTimeout(() => {
                 switch (payload.requestedMessage) {
                   case "BootNotification":
@@ -1071,21 +1102,40 @@
                   case "Heartbeat":
                     this.sendHeartbeat();
                     break;
-                  case "StatusNotification":
-                    this.sendStatusNotification(
-                      this.config.statusNotification || "Available",
-                      "NoError",
-                      payload.connectorId || this.config.connectorId
-                    );
+                  case "StatusNotification": {
+                    const cid =
+                      payload.connectorId && this.connectors[payload.connectorId]
+                        ? payload.connectorId
+                        : null;
+                    if (cid) {
+                      this.sendStatusNotification(
+                        cid,
+                        this.connectors[cid].config.statusNotification || "Available"
+                      );
+                    } else {
+                      this.CONNECTOR_IDS.forEach((c) =>
+                        this.sendStatusNotification(
+                          c,
+                          this.connectors[c].config.statusNotification || "Available"
+                        )
+                      );
+                    }
                     break;
-                  case "MeterValues":
-                    if (this.state.currentTransactionId) {
-                      // Send a single meter value if transaction is active
-                      this.startSendingMeterValues(false);
+                  }
+                  case "MeterValues": {
+                    const cid =
+                      payload.connectorId && this.connectors[payload.connectorId]
+                        ? payload.connectorId
+                        : this.CONNECTOR_IDS.find(
+                            (c) => this.connectors[c].currentTransactionId
+                          );
+                    if (cid && this.connectors[cid].currentTransactionId) {
+                      this.startSendingMeterValues(cid, false);
                     } else {
                       this.log("Cannot trigger MeterValues: No active transaction");
                     }
                     break;
+                  }
                   default:
                     this.log(`TriggerMessage: ${payload.requestedMessage} not implemented`);
                     break;
@@ -1093,39 +1143,30 @@
               }, 500);
               break;
 
-            case "GetDiagnostics":
+            case "GetDiagnostics": {
               this.log(`Processing GetDiagnostics - Location: ${payload.location}`);
               const fileName = `diagnostics_${this.config.chargePointId}_${Date.now()}.log`;
-              this.sendResponse(messageId, {
-                fileName: fileName,
-              });
-              
-              // Simulate diagnostics upload process
+              this.sendResponse(messageId, { fileName: fileName });
               setTimeout(() => {
                 this.log(`Starting diagnostics upload to ${payload.location}...`);
                 this.sendDiagnosticsStatusNotification("Uploading");
-                
                 setTimeout(() => {
                   this.log(`Diagnostics upload completed: ${fileName}`);
                   this.sendDiagnosticsStatusNotification("Uploaded");
-                }, 3000); // 3 seconds to upload
-                
-              }, 1000); // Wait 1 second before starting upload
+                }, 3000);
+              }, 1000);
               break;
+            }
 
             case "UpdateFirmware":
               this.log(
                 `Processing UpdateFirmware - Location: ${payload.location}, RetrieveDate: ${payload.retrieveDate}`
               );
               this.sendResponse(messageId, {});
-              // Simulate firmware update process
               setTimeout(() => {
                 this.log("Firmware update completed (simulated)");
               }, 2000);
               break;
-
-            // Add handlers for other commands: UnlockConnector, GetConfiguration, ChangeConfiguration, etc.
-            // Each should send a response (Accepted/Rejected/NotSupported) and potentially modify simulator state.
 
             default:
               this.log(`Unsupported command received: ${action}. Sending NotSupported.`);
@@ -1144,22 +1185,30 @@
           const payload = {
             chargePointVendor: this.config.chargePointVendor,
             chargePointModel: this.config.chargePointModel,
-            // Add other BootNotification fields as needed (serial numbers, firmware, etc.)
             chargePointSerialNumber: `SIM-${this.id}-SN`,
             firmwareVersion: "1.0.0",
           };
-          this.sendRequest("BootNotification", payload);
+          this.sendRequest("BootNotification", payload, null);
         }
 
-        authorize() {
-          if (!this.validateFields(["idTag"])) return;
-          const payload = { idTag: this.config.idTag };
-          this.sendRequest("Authorize", payload);
+        authorize(connectorId) {
+          if (!this.validateFields(connectorId, ["idTag"])) return;
+          const c = this.connectors[connectorId];
+          this.sendRequest("Authorize", { idTag: c.config.idTag }, connectorId);
         }
 
-        startTransaction() {
+        startTransaction(connectorId, idTagOverride = null) {
+          const c = this.connectors[connectorId];
+          // Apply an idTag supplied by the CSMS (RemoteStartTransaction) *before*
+          // validation, so it is used for this transaction and shown in the UI
+          // for the whole session (no transient revert).
+          if (idTagOverride) {
+            c.config.idTag = idTagOverride;
+            c.ui.idTagInput.value = idTagOverride;
+          }
+
           if (
-            !this.validateFields([
+            !this.validateFields(connectorId, [
               "connectorId",
               "idTag",
               "minEnergy",
@@ -1174,108 +1223,108 @@
           )
             return;
 
-          if (this.state.currentTransactionId) {
-            this.log("Cannot start: A transaction is already active.");
+          if (c.currentTransactionId) {
+            this.log(
+              `Connector ${connectorId}: cannot start, Tx ${c.currentTransactionId} already active.`
+            );
             alert(
-              `Simulator ${this.id}: Cannot start new transaction, Tx ${this.state.currentTransactionId} is already active.`
+              `Simulator ${this.id} (Connector ${connectorId}): Tx ${c.currentTransactionId} is already active.`
             );
             return;
           }
+
+          // OCPP 1.6 status transition: the connector becomes Preparing before the
+          // StartTransaction request is sent (Available -> Preparing).
+          this.sendStatusNotification(connectorId, "Preparing");
 
           const payload = {
-            connectorId: this.config.connectorId,
-            idTag: this.config.idTag,
+            connectorId: connectorId,
+            idTag: c.config.idTag,
             timestamp: new Date().toISOString(),
             meterStart: this.config.minEnergy * 1000, // Convert kWh to Wh
-            // reservationId: 0 // Optional
           };
-          if (this.sendRequest("StartTransaction", payload)) {
-            this.updateIndicator("yellow"); // Indicate pending start
-          }
+          this.sendRequest("StartTransaction", payload, connectorId);
         }
 
-        stopTransaction(isRemote = false) {
-          this.loadConfigFromUI(); // Ensure we have the latest Tx ID from the input field if needed
-          const txIdToStop = this.config.transactionIdToStop || this.state.currentTransactionId;
+        stopTransaction(connectorId, isRemote = false) {
+          this.loadConfigFromUI();
+          const c = this.connectors[connectorId];
+          const txIdToStop = c.transactionIdToStop || c.currentTransactionId;
 
           if (!txIdToStop) {
-            this.log("No active transaction or Transaction ID specified to stop.");
-            alert(
-              `Simulator ${this.id}: Please specify a Transaction ID to stop, or start a transaction first.`
+            this.log(
+              `Connector ${connectorId}: No active transaction or Transaction ID specified to stop.`
             );
-            // if (!this.validateFields(['transactionIdToStop'])) return; // Ask for ID if none active - Redundant with alert
+            alert(
+              `Simulator ${this.id} (Connector ${connectorId}): Please specify a Transaction ID to stop, or start a transaction first.`
+            );
             return;
           }
 
-          // Check if a StopTransaction is already pending for this ID
-          if (this.state.pendingStopConfirmationForTxId === txIdToStop) {
+          if (c.pendingStopConfirmationForTxId === txIdToStop) {
             this.log(`StopTransaction for Tx ${txIdToStop} is already pending. Please wait.`);
             return;
           }
 
-          // If a specific ID is provided, check if it matches the active one (if any)
-          if (this.state.currentTransactionId && txIdToStop !== this.state.currentTransactionId) {
+          if (c.currentTransactionId && txIdToStop !== c.currentTransactionId) {
             this.log(
-              `Warning: Stopping Tx ${txIdToStop} but current active Tx is ${this.state.currentTransactionId}. This might be unintended.`
+              `Warning: Stopping Tx ${txIdToStop} but current active Tx on connector ${connectorId} is ${c.currentTransactionId}.`
             );
-            // Decide if this should be allowed or blocked. For now, allow it but log.
           }
 
-          if (!this.validateFields(["idTag"])) return; // Need IdTag for stop
+          if (!this.validateFields(connectorId, ["idTag"])) return;
 
-          // Stop sending meter values immediately if this stop request is for the *current* transaction
-          if (txIdToStop === this.state.currentTransactionId) {
-            clearInterval(this.state.meterValueIntervalId);
-            this.state.meterValueIntervalId = null;
-            this.log("Stopped sending MeterValues due to StopTransaction request.");
+          if (txIdToStop === c.currentTransactionId) {
+            this._stopMeterInterval(connectorId);
+            this.log(
+              `Connector ${connectorId}: Stopped sending MeterValues due to StopTransaction request.`
+            );
           }
 
-          // Calculate final meter value based on progress
-          let meterStopValue = this.calculateMeterStopValue(txIdToStop);
+          const meterStopValue = this.calculateMeterStopValue(connectorId, txIdToStop);
 
           const payload = {
             transactionId: txIdToStop,
-            idTag: this.config.idTag,
+            idTag: c.config.idTag,
             timestamp: new Date().toISOString(),
             meterStop: meterStopValue,
-            reason: isRemote ? "Remote" : "Local", // Optional reason
-            // transactionData: [] // Optional: Add final meter values here?
+            reason: isRemote ? "Remote" : "Local",
           };
 
-          // Send StopTransaction. Confirmation logic is in handleCallResult.
-          if (this.sendRequest("StopTransaction", payload)) {
-            this.log(`StopTransaction sent for Tx ${txIdToStop}. Waiting for confirmation...`);
-            this.state.pendingStopConfirmationForTxId = txIdToStop; // Set pending confirmation flag
-            // UI update (indicator, etc.) happens on confirmation
+          if (this.sendRequest("StopTransaction", payload, connectorId)) {
+            this.log(
+              `StopTransaction sent for Tx ${txIdToStop} (Connector ${connectorId}). Waiting for confirmation...`
+            );
+            c.pendingStopConfirmationForTxId = txIdToStop;
           }
-
-          // Important: Don't clear local state here. Wait for the server's confirmation
-          // in handleCallResult('StopTransaction', ...).
+          // Wait for the server's confirmation in handleCallResult('StopTransaction').
         }
 
-        calculateMeterStopValue(transactionId) {
-          // Use the state associated with the *currently active* transaction
-          // or the persisted state if resuming/stopping an old one.
-          let stopValueKwh = 0; // Store as kWh for calculation
+        calculateMeterStopValue(connectorId, transactionId) {
+          const c = this.connectors[connectorId];
+          let stopValueKwh = 0;
           let sourceArr = null;
           let sourceIndex = 0;
 
-          // Prioritize currently active transaction state
-          if (transactionId === this.state.currentTransactionId && this.state.meterValuesArr) {
-            sourceArr = this.state.meterValuesArr;
-            sourceIndex = this.state.meterValueIndex;
+          // Prioritize currently active transaction state for this connector
+          if (transactionId === c.currentTransactionId && c.meterValuesArr) {
+            sourceArr = c.meterValuesArr;
+            sourceIndex = c.meterValueIndex;
             this.log(`Calculating stop value from active state: index ${sourceIndex}`);
           } else {
-            // If stopping a different ID or no active state, try loading persisted state
+            // Otherwise try loading this connector's persisted state
             const key = this._getPersistenceKey();
             if (key) {
               const persisted = localStorage.getItem(key);
               if (persisted) {
                 try {
                   const parsed = JSON.parse(persisted);
-                  if (parsed.currentTransactionId === transactionId) {
-                    sourceArr = parsed.meterValuesArr;
-                    sourceIndex = parsed.meterValueIndex;
+                  const saved =
+                    (parsed.connectors || {})[connectorId] ||
+                    (parsed.connectors || {})[String(connectorId)];
+                  if (saved && saved.currentTransactionId === transactionId) {
+                    sourceArr = saved.meterValuesArr;
+                    sourceIndex = saved.meterValueIndex;
                     this.log(`Calculating stop value from persisted state: index ${sourceIndex}`);
                   }
                 } catch (e) {
@@ -1286,7 +1335,6 @@
           }
 
           if (sourceArr && sourceIndex > 0) {
-            // Use the energy value from the *last successfully sent* index (index - 1)
             const lastSentIndex = Math.max(0, sourceIndex - 1);
             if (lastSentIndex < sourceArr.length) {
               const energySample = sourceArr[lastSentIndex]?.meterValue?.find(
@@ -1305,80 +1353,86 @@
             }
           } else if (sourceArr && sourceIndex === 0) {
             this.log("Stop requested before any meter values were sent. Using meterStart value.");
-            stopValueKwh = this.config.minEnergy || 0; // Use configured start value
+            stopValueKwh = this.config.minEnergy || 0;
           } else {
             this.log(
               "No meter values found for calculation. Using configured maxEnergy as fallback."
             );
-            stopValueKwh = this.config.maxEnergy || 0; // Fallback
+            stopValueKwh = this.config.maxEnergy || 0;
           }
 
-          // Ensure the value is reasonable (e.g., not negative)
           stopValueKwh = Math.max(this.config.minEnergy || 0, stopValueKwh);
-
           this.log(`Calculated stop value: ${stopValueKwh} kWh`);
           return Math.round(stopValueKwh * 1000); // Convert kWh to Wh and round
         }
 
         sendHeartbeat() {
-          this.sendRequest("Heartbeat", {});
+          this.sendRequest("Heartbeat", {}, null);
         }
 
         sendStatusNotification(
+          connectorId,
           status = null,
           errorCode = "NoError",
-          connectorId = null,
           updateUiField = true
         ) {
-          const currentStatus = status || this.config.statusNotification;
-          const currentConnectorId = connectorId !== null ? connectorId : this.config.connectorId;
-
-          if (!this.validateFields(["connectorId"])) return; // Need connectorId
+          const c = this.connectors[connectorId];
+          if (!c) return;
+          const currentStatus = status || c.config.statusNotification;
 
           const payload = {
-            connectorId: currentConnectorId,
+            connectorId: connectorId,
             status: currentStatus,
             errorCode: errorCode,
             timestamp: new Date().toISOString(),
-            // info: "", vendorId: "", vendorErrorCode: "" // Optional
           };
-          if (this.sendRequest("StatusNotification", payload)) {
-            // Update UI input field after sending, if requested
+          if (this.sendRequest("StatusNotification", payload, connectorId)) {
             if (updateUiField) {
-              this.uiElements.statusNotificationInput.value = currentStatus;
+              c.ui.statusNotificationInput.value = currentStatus;
             }
-            this.config.statusNotification = currentStatus; // Always update the config object
+            c.config.statusNotification = currentStatus;
+            this._applyStatusIndicator(connectorId, currentStatus);
           }
         }
 
-        sendDiagnosticsStatusNotification(status) {
-          const payload = {
-            status: status
+        // Maps an OCPP 1.6 connector status to the coloured indicator so the UI
+        // reflects the connector's real state machine.
+        _applyStatusIndicator(connectorId, status) {
+          if (!this.state.isConnected) return;
+          const map = {
+            Available: "yellow",
+            Preparing: "yellow",
+            Charging: "green",
+            SuspendedEV: "green",
+            SuspendedEVSE: "green",
+            Finishing: "yellow",
+            Reserved: "yellow",
+            Unavailable: "red",
+            Faulted: "red",
           };
-          this.sendRequest("DiagnosticsStatusNotification", payload);
+          this.updateIndicator(connectorId, map[status] || "yellow");
         }
 
-        sendStatusNotificationFromInput() {
-          if (!this.validateFields(["connectorId", "statusNotification"])) return;
-          this.sendStatusNotification(
-            this.config.statusNotification,
-            "NoError",
-            this.config.connectorId
-          );
+        sendDiagnosticsStatusNotification(status) {
+          this.sendRequest("DiagnosticsStatusNotification", { status: status }, null);
+        }
+
+        sendStatusNotificationFromInput(connectorId) {
+          if (!this.validateFields(connectorId, ["statusNotification"])) return;
+          const c = this.connectors[connectorId];
+          this.sendStatusNotification(connectorId, c.config.statusNotification, "NoError");
         }
 
         sendDataTransfer() {
-          if (!this.validateFields(["dataTransferData"])) {
-            // Assuming 'dataTransferData' is the key for the input value
+          if (!this.validateFields(null, ["dataTransferData"])) {
             alert(`Simulator ${this.id}: Please enter data to transfer.`);
             return;
           }
           const payload = {
-            vendorId: "SimulatorVendor", // Or read from config
-            // messageId: "SomeMessageID", // Optional
+            vendorId: "SimulatorVendor",
             data: this.config.dataTransferData,
           };
-          this.sendRequest("DataTransfer", payload);
+          this.sendRequest("DataTransfer", payload, null);
         }
 
         startHeartbeat(interval) {
@@ -1393,8 +1447,9 @@
           }
         }
 
-        startSendingMeterValues(resume = false) {
-          this.loadConfigFromUI(); // Ensure config is current
+        startSendingMeterValues(connectorId, resume = false) {
+          this.loadConfigFromUI();
+          const c = this.connectors[connectorId];
 
           if (!this.state.isConnected) {
             this.log("Cannot send MeterValues: Not connected.");
@@ -1402,23 +1457,19 @@
             return;
           }
 
-          if (!this.state.currentTransactionId) {
-            this.log("Cannot send MeterValues: No active transaction ID.");
-            alert(`Simulator ${this.id}: Cannot send MeterValues, no active transaction.`);
+          if (!c.currentTransactionId) {
+            this.log(`Connector ${connectorId}: Cannot send MeterValues: No active transaction ID.`);
+            alert(`Simulator ${this.id} (Connector ${connectorId}): No active transaction.`);
             return;
           }
 
-          // If already sending, log and exit
-          if (this.state.meterValueIntervalId !== null) {
-            this.log(
-              `MeterValues sending is already active (Interval ID: ${this.state.meterValueIntervalId}).`
-            );
+          if (c.meterValueIntervalId !== null) {
+            this.log(`Connector ${connectorId}: MeterValues sending is already active.`);
             return;
           }
 
-          // Validate necessary config for sending/generating
           if (
-            !this.validateFields([
+            !this.validateFields(connectorId, [
               "meterNumMessages",
               "meterSampleInterval",
               "minSoc",
@@ -1434,46 +1485,40 @@
           // --- Decide whether to generate or use existing/persisted data ---
           let needsGeneration = false;
           if (resume) {
-            // Trying to resume: Check if we have valid persisted data
             if (
-              this.state.meterValuesArr &&
-              this.state.meterValuesArr.length > 0 &&
-              this.state.meterValueIndex < this.state.meterValuesArr.length
+              c.meterValuesArr &&
+              c.meterValuesArr.length > 0 &&
+              c.meterValueIndex < c.meterValuesArr.length
             ) {
               this.log(
-                `Resuming meter values from index ${this.state.meterValueIndex}. Total sets: ${this.state.meterValuesArr.length}`
+                `Connector ${connectorId}: Resuming meter values from index ${c.meterValueIndex}. Total sets: ${c.meterValuesArr.length}`
               );
-              // Ensure the interval matches the current config (or use persisted interval?)
-              // Let's use the current config's interval for simplicity when resuming via button.
             } else {
               this.log(
-                "Resume requested, but no valid persisted meter data found or already finished. Generating new values."
+                `Connector ${connectorId}: Resume requested, but no valid persisted meter data found. Generating new values.`
               );
-              needsGeneration = true; // Treat as starting new if resume data is bad
-              resume = false; // Switch flag
+              needsGeneration = true;
+              resume = false;
             }
           } else {
-            // Starting new: always generate
             needsGeneration = true;
           }
 
           if (needsGeneration) {
-            this.state.meterValuesArr = this.generateMeterValues();
-            this.state.meterValueIndex = 0; // Start from beginning
-            this.log(`Generated ${this.state.meterValuesArr.length} meter value sets.`);
-            // Persist the newly generated array immediately so it's available if disconnected
+            c.meterValuesArr = this.generateMeterValues(connectorId);
+            c.meterValueIndex = 0;
+            this.log(`Connector ${connectorId}: Generated ${c.meterValuesArr.length} meter value sets.`);
             this.persistState();
           }
 
-          // --- Final checks before starting interval ---
-          if (!this.state.meterValuesArr || this.state.meterValuesArr.length === 0) {
+          if (!c.meterValuesArr || c.meterValuesArr.length === 0) {
             this.log("Error: No meter values available to send.");
             return;
           }
 
-          if (this.state.meterValueIndex >= this.state.meterValuesArr.length) {
+          if (c.meterValueIndex >= c.meterValuesArr.length) {
             this.log(
-              `Cannot start sending: Already at the end of meter values (Index: ${this.state.meterValueIndex}, Total: ${this.state.meterValuesArr.length}).`
+              `Connector ${connectorId}: Already at the end of meter values (Index: ${c.meterValueIndex}, Total: ${c.meterValuesArr.length}).`
             );
             return;
           }
@@ -1481,103 +1526,73 @@
           const intervalSeconds = this.config.meterSampleInterval;
           if (isNaN(intervalSeconds) || intervalSeconds <= 0) {
             this.log("Invalid meter value sample interval.");
-            alert(
-              `Simulator ${this.id}: Invalid Meter Interval (${intervalSeconds}s). Must be > 0.`
-            );
+            alert(`Simulator ${this.id}: Invalid Meter Interval (${intervalSeconds}s). Must be > 0.`);
             return;
           }
 
-          // --- Define the sending function ---
+          // --- Define the sending function (closes over connectorId) ---
           const sendNext = () => {
-            // Check if transaction is still active *before* sending
-            if (!this.state.currentTransactionId) {
-              this.log("Transaction stopped externally. Halting MeterValues.");
-              clearInterval(this.state.meterValueIntervalId);
-              this.state.meterValueIntervalId = null;
+            if (!c.currentTransactionId) {
+              this.log(`Connector ${connectorId}: Transaction stopped externally. Halting MeterValues.`);
+              this._stopMeterInterval(connectorId);
               return;
             }
 
-            // Check if index is still valid
-            if (this.state.meterValueIndex < this.state.meterValuesArr.length) {
-              // Deep copy payload to avoid modifying the stored array directly
+            if (c.meterValueIndex < c.meterValuesArr.length) {
               let meterValuePayload;
               try {
-                meterValuePayload = JSON.parse(
-                  JSON.stringify(this.state.meterValuesArr[this.state.meterValueIndex])
-                );
+                meterValuePayload = JSON.parse(JSON.stringify(c.meterValuesArr[c.meterValueIndex]));
               } catch (e) {
                 this.log(
-                  `Error cloning meter value payload at index ${this.state.meterValueIndex}: ${e}`
+                  `Connector ${connectorId}: Error cloning meter value payload at index ${c.meterValueIndex}: ${e}`
                 );
-                clearInterval(this.state.meterValueIntervalId);
-                this.state.meterValueIntervalId = null;
+                this._stopMeterInterval(connectorId);
                 return;
               }
 
-              // Update timestamps just before sending
               const now = new Date().toISOString();
               meterValuePayload.meterValue.forEach((mv) => (mv.timestamp = now));
-              // Ensure correct transactionId is set
-              meterValuePayload.transactionId = this.state.currentTransactionId;
+              meterValuePayload.transactionId = c.currentTransactionId;
 
-              if (this.sendRequest("MeterValues", meterValuePayload)) {
-                this.state.meterValueIndex++;
-                // Persist state *after* successfully sending (or attempting to send)
+              if (this.sendRequest("MeterValues", meterValuePayload, connectorId)) {
+                c.meterValueIndex++;
                 this.persistState();
               } else {
-                // If send failed (e.g., websocket closed), stop trying
-                this.log("Failed to send MeterValue (WebSocket likely closed), stopping interval.");
-                clearInterval(this.state.meterValueIntervalId);
-                this.state.meterValueIntervalId = null;
-                // State should have been persisted before disconnect in onclose/disconnect methods
-                // or by the previous successful send.
+                this.log(
+                  `Connector ${connectorId}: Failed to send MeterValue (WebSocket likely closed), stopping interval.`
+                );
+                this._stopMeterInterval(connectorId);
               }
             } else {
-              // Reached the end
-              this.log("Finished sending all meter values for this transaction.");
-              clearInterval(this.state.meterValueIntervalId);
-              this.state.meterValueIntervalId = null;
-              // Optionally auto-stop transaction here?
-              // this.stopTransaction();
-              // Or send final status?
-              this.sendStatusNotification("Finishing");
+              this.log(`Connector ${connectorId}: Finished sending all meter values for this transaction.`);
+              this._stopMeterInterval(connectorId);
+              this.sendStatusNotification(connectorId, "Finishing");
               setTimeout(() => {
-                if (this.state.currentTransactionId) {
-                  // Check if still charging
-                  this.sendStatusNotification("SuspendedEVSE"); // Example final state before stop
+                if (c.currentTransactionId) {
+                  this.sendStatusNotification(connectorId, "SuspendedEVSE");
                 }
               }, 2000);
             }
           };
 
-          // --- Start the process ---
           this.log(
-            `${
+            `Connector ${connectorId}: ${
               resume ? "Resuming" : "Starting"
-            } MeterValues sending every ${intervalSeconds}s from index ${
-              this.state.meterValueIndex
-            }.`
+            } MeterValues sending every ${intervalSeconds}s from index ${c.meterValueIndex}.`
           );
 
-          // Send the first one immediately
           sendNext();
 
-          // Schedule subsequent sends only if the first send didn't fail and we're not already at the end
           if (
-            this.state.meterValueIntervalId === null && // Check if sendNext cleared the interval already
-            this.state.currentTransactionId && // Check if transaction still active
-            this.state.meterValueIndex < this.state.meterValuesArr.length
+            c.meterValueIntervalId === null &&
+            c.currentTransactionId &&
+            c.meterValueIndex < c.meterValuesArr.length
           ) {
-            // Check if more values exist
-            this.state.meterValueIntervalId = setInterval(sendNext, intervalSeconds * 1000);
-          } else if (this.state.meterValueIntervalId !== null) {
-            this.log("Interval already running or cleared by sendNext.");
-          } else {
-            this.log("Not scheduling interval (already finished or transaction stopped).");
+            c.meterValueIntervalId = setInterval(sendNext, intervalSeconds * 1000);
           }
         }
 
-        generateMeterValues() {
+        generateMeterValues(connectorId) {
           const numMessages = this.config.meterNumMessages;
           const minSoc = this.config.minSoc;
           const maxSoc = this.config.maxSoc;
@@ -1585,32 +1600,25 @@
           const maxEnergy = this.config.maxEnergy;
           const avPower = this.config.avPower;
           const avCurrent = this.config.avCurrent;
-          const connectorId = this.config.connectorId;
-          // Transaction ID will be added just before sending
 
           if (numMessages <= 0) return [];
 
           let generatedValues = [];
-          // Calculate steps based on numMessages > 1 to avoid division by zero
           const energyStep = numMessages > 1 ? (maxEnergy - minEnergy) / (numMessages - 1) : 0;
           const socStep = numMessages > 1 ? (maxSoc - minSoc) / (numMessages - 1) : 0;
 
           for (let i = 0; i < numMessages; i++) {
-            // Calculate energy: start + step * i. Cap at maxEnergy.
             const energyVal = Math.min(maxEnergy, minEnergy + i * energyStep).toFixed(3);
-            // Calculate SoC: start + step * i. Round, cap at maxSoc.
             const socVal = Math.min(maxSoc, Math.round(minSoc + i * socStep));
 
-            // Create payload structure for this step
             const payload = {
               connectorId: connectorId,
-              // transactionId: will be set later
               meterValue: [
                 {
-                  timestamp: new Date().toISOString(), // Will be updated on send
+                  timestamp: new Date().toISOString(),
                   sampledValue: [
                     {
-                      value: energyVal, // Use calculated value
+                      value: energyVal,
                       context: "Sample.Periodic",
                       format: "Raw",
                       measurand: "Energy.Active.Import.Register",
@@ -1623,7 +1631,7 @@
                   timestamp: new Date().toISOString(),
                   sampledValue: [
                     {
-                      value: avCurrent.toString(), // Assuming constant for simplicity
+                      value: avCurrent.toString(),
                       context: "Sample.Periodic",
                       format: "Raw",
                       measurand: "Current.Import",
@@ -1635,7 +1643,7 @@
                   timestamp: new Date().toISOString(),
                   sampledValue: [
                     {
-                      value: socVal.toString(), // Use calculated value
+                      value: socVal.toString(),
                       context: "Sample.Periodic",
                       format: "Raw",
                       measurand: "SoC",
@@ -1647,7 +1655,7 @@
                   timestamp: new Date().toISOString(),
                   sampledValue: [
                     {
-                      value: avPower.toString(), // Assuming constant for simplicity
+                      value: avPower.toString(),
                       context: "Sample.Periodic",
                       format: "Raw",
                       measurand: "Power.Active.Import",
@@ -1655,7 +1663,6 @@
                     },
                   ],
                 },
-                // Add other measurands if needed (Voltage, Power.Reactive, etc.)
               ],
             };
             generatedValues.push(payload);
@@ -1663,52 +1670,41 @@
           return generatedValues;
         }
 
-        // --- Transaction List UI ---
-        updateTransactionsUI() {
-          this.uiElements.transactionsArea.innerHTML = ""; // Clear existing
-          if (this.state.activeTransactions.length === 0) {
-            this.uiElements.transactionsArea.innerHTML = "No active transactions!";
+        // --- Transaction List UI (per connector) ---
+        updateTransactionsUI(connectorId) {
+          const c = this.connectors[connectorId];
+          c.ui.transactionsArea.innerHTML = "";
+          if (c.activeTransactions.length === 0) {
+            c.ui.transactionsArea.innerHTML = "No active transactions!";
           } else {
-            this.state.activeTransactions.forEach((txId) => {
+            c.activeTransactions.forEach((txId) => {
               if (txId) {
-                // Filter out null/undefined if they sneak in
                 const div = document.createElement("div");
                 div.textContent = txId;
-                this.uiElements.transactionsArea.appendChild(div);
+                c.ui.transactionsArea.appendChild(div);
               }
             });
           }
-          // Also update the Stop Transaction input if there's a current one
-          this.uiElements.transToStpInput.value = this.state.currentTransactionId || "";
-          this.config.transactionIdToStop = this.state.currentTransactionId || null;
+          c.ui.transToStpInput.value = c.currentTransactionId || "";
+          c.transactionIdToStop = c.currentTransactionId || null;
         }
 
-        addTransactionToList(txId) {
-          if (txId && !this.state.activeTransactions.includes(txId)) {
-            this.state.activeTransactions.push(txId);
-            this.updateTransactionsUI();
-            this.persistState(); // Persist the updated list
-          }
-        }
-
-        removeTransactionFromList(txId) {
-          const index = this.state.activeTransactions.indexOf(txId);
-          if (index > -1) {
-            this.state.activeTransactions.splice(index, 1);
-            this.updateTransactionsUI();
-            // Persist state *after* clearing currentTransactionId if it matches
-            if (this.state.currentTransactionId === txId) {
-              this.state.currentTransactionId = null; // Clear current if it was removed
-              this.config.transactionIdToStop = null;
-            }
-            this.persistState(); // Persist the updated list (or clear if no tx active)
-          } else if (this.state.currentTransactionId === txId) {
-            // If it wasn't in the list but was the current one, still clear current
-            this.state.currentTransactionId = null;
-            this.config.transactionIdToStop = null;
-            this.updateTransactionsUI(); // Update UI to reflect cleared current ID
+        addTransactionToList(connectorId, txId) {
+          const c = this.connectors[connectorId];
+          if (txId && !c.activeTransactions.includes(txId)) {
+            c.activeTransactions.push(txId);
+            this.updateTransactionsUI(connectorId);
             this.persistState();
           }
+        }
+
+        removeTransactionFromList(connectorId, txId) {
+          const c = this.connectors[connectorId];
+          const index = c.activeTransactions.indexOf(txId);
+          if (index > -1) {
+            c.activeTransactions.splice(index, 1);
+          }
+          this.updateTransactionsUI(connectorId);
         }
       } // End Simulator Class
 
@@ -1717,39 +1713,47 @@
       // =============================================
       const simulators = [];
       const NUM_SIMULATORS = 4; // Number of simulator tabs to create
+      const CONNECTORS_PER_CP = [1, 2]; // Connectors per charge point
 
       function getSimulatorHTMLTemplate(simId) {
-        // Generates the HTML structure for one simulator instance
-        // Uses unique IDs based on simId
         const defaultCPID = `SIM_${simId}`;
-        const defaultTag = `TAG_${simId}`;
         const defaultEndpoint = "wss://ocpp-dev.evnet.xyz/ocpp/";
 
-        // *** UPDATED HTML TEMPLATE ***
+        // Builds the control panel for a single connector
+        const connectorPanel = (cid) => `
+                    <div class="connector-panel">
+                      <strong>Connector ${cid}</strong>
+                      <div>
+                        <span>Id Tag</span>
+                        <input id="idTag-${simId}-${cid}" type="text" placeholder="Id Tag" value="TAG_${simId}_${cid}" size="10"/>
+                        <button id="send-${simId}-${cid}">Authorize</button>
+                        <button id="start-${simId}-${cid}">Start Tx</button>
+                        <input id="TransToStp-${simId}-${cid}" type="text" placeholder="Transaction Id" value="" size="10"/>
+                        <button id="stop-${simId}-${cid}">Stop Tx</button>
+                        <span>Status</span>
+                        <input id="statusNotification-${simId}-${cid}" type="text" placeholder="Status" value="Available" size="12"/>
+                        <button id="status-${simId}-${cid}">Status Notif.</button>
+                        <button id="start-meter-values-${simId}-${cid}" title="Start sending new meter values for the current transaction">Start Meter Values</button>
+                        <button id="resume-meter-values-${simId}-${cid}" title="Resume sending meter values from the last known point (requires persisted state)">Resume Meter Values</button>
+                      </div>
+                      <div style="margin-top: 5px;">
+                        <span class="indicator" id="red-${simId}-${cid}" style="display:inline-block; color: red; font-weight: bold;">&#9632; Disconnected</span>
+                        <span class="indicator" id="green-${simId}-${cid}" style="display:none; color: green; font-weight: bold;">&#9632; Charging</span>
+                        <span class="indicator" id="yellow-${simId}-${cid}" style="display:none; color: orange; font-weight: bold;">&#9632; Connected/Idle</span>
+                        <span class="indicator" id="blue-${simId}-${cid}" style="display:none; color: blue; font-weight: bold;">&#9632; Connecting...</span>
+                      </div>
+                    </div>`;
+
         return `
                 <div class="flex-container">
                   <div class="item-1">
+                    <!-- Shared charge-point controls -->
                     <button id="connect-${simId}">Connect</button>
-                    <button id="send-${simId}">Authorize</button>
-                    <input id="connectorId-${simId}" type="text" placeholder="Connector Id" value="1" size="5"/>
-                    <button id="start-${simId}">Start Tx</button>
-                    <input id="TransToStp-${simId}" type="text" placeholder="Transaction Id" value="" size="10"/>
-                    <button id="stop-${simId}">Stop Tx</button>
-                    <br> <!-- Line break for clarity -->
                     <button id="heartbeat-${simId}">Heartbeat</button>
-                    <button id="status-${simId}">Status Notif.</button>
                     <button id="data_transfer-${simId}">Data Transfer</button>
-                    <!-- *** ADDED METER VALUE BUTTONS *** -->
-                    <button id="start-meter-values-${simId}" title="Start sending new meter values for the current transaction">Start Meter Values</button>
-                    <button id="resume-meter-values-${simId}" title="Resume sending meter values from the last known point (requires persisted state)">Resume Meter Values</button>
 
-
-                    <div style="margin-top: 5px;">
-                      <span class="indicator" id="red-${simId}" style="display:inline-block; color: red; font-weight: bold;">&#9632; Disconnected</span>
-                      <span class="indicator" id="green-${simId}" style="display:none; color: green; font-weight: bold;">&#9632; Charging</span>
-                      <span class="indicator" id="yellow-${simId}" style="display:none; color: orange; font-weight: bold;">&#9632; Connected/Idle</span>
-                      <span class="indicator" id="blue-${simId}" style="display:none; color: blue; font-weight: bold;">&#9632; Connecting...</span>
-                    </div>
+                    <!-- Per-connector control panels -->
+                    ${CONNECTORS_PER_CP.map((cid) => connectorPanel(cid)).join("")}
                   </div>
                   <div class="item-2">
                      <!-- Inner Tabs (Settings, Log, Transactions) -->
@@ -1760,13 +1764,11 @@
                      </ul>
                      <div id="tab-settings-${simId}" class="tabset_content inner-content active">
                         <h2 class="tabset_label">Settings</h2>
-                        <form onsubmit="return false;"> <!-- Prevent form submission -->
+                        <form onsubmit="return false;">
                             <span>Endpoint URL</span><input id="endp-${simId}" type="text" placeholder="Endpoint URL" value="${defaultEndpoint}" size="40"/>
                             <span>Charge Point Id</span><input id="CP-${simId}" type="text" placeholder="Charge Point Id" value="${defaultCPID}"/>
                             <span>Charge Point Vendor</span><input id="chargePointVendor-${simId}" type="text" placeholder="Charge Point Vendor" value="Simulator"/>
                             <span>Charge Point Model</span><input id="chargePointModel-${simId}" type="text" placeholder="Charge Point Model" value="JS-SIM-1.6"/>
-                            <span>Id Tag</span><input id="idTag-${simId}" type="text" placeholder="Id Tag" value="${defaultTag}" />
-                            <span>Status</span><input id="statusNotification-${simId}" type="text" placeholder="Status (e.g., Available, Preparing, Charging, etc.)" value="Available"/>
                             <span>Meter Msgs</span><input id="meterValuesNumberOfMessages-${simId}" type="text" placeholder="# Msgs" value="60" size="5"/>
                             <span>Meter Interval (s)</span><input id="meterValueSampleIntervalInSeconds-${simId}" type="text" placeholder="Interval (s)" value="10" size="5"/>
                             <span>Min SoC (%)</span><input id="minSoc-${simId}" type="text" placeholder="Min SoC" value="10" size="5"/>
@@ -1776,7 +1778,7 @@
                             <span>Av Power (W)</span><input id="avPower-${simId}" type="text" placeholder="Av Power (W)" value="7200" size="7"/>
                             <span>Av Current (A)</span><input id="avCurrent-${simId}" type="text" placeholder="Av Current (A)" value="32" size="5"/>
                             <span>Data Transfer Data</span><input id="datatrasfer-${simId}" type="text" placeholder="Data for DataTransfer" value='{"custom":"data"}' size="30"/>
-                            <!-- Add other settings inputs here with unique IDs -->
+                            <small style="display:block; margin-top:6px; color:#666;">Endpoint, identity and meter settings are shared by both connectors. Id Tag and Status are set per connector above.</small>
                         </form>
                      </div>
                      <div id="tab-log-${simId}" class="tabset_content inner-content">
@@ -1785,8 +1787,10 @@
                      </div>
                      <div id="tab-transactions-${simId}" class="tabset_content inner-content">
                         <h2 class="tabset_label">Transactions</h2>
-                        <p>Active Transaction IDs:</p>
-                        <div id="transactions-${simId}" style="font-family: monospace;">No active transactions!</div>
+                        <p>Connector 1 &mdash; Active Transaction IDs:</p>
+                        <div id="transactions-${simId}-1" style="font-family: monospace;">No active transactions!</div>
+                        <p>Connector 2 &mdash; Active Transaction IDs:</p>
+                        <div id="transactions-${simId}-2" style="font-family: monospace;">No active transactions!</div>
                      </div>
                   </div>
                 </div>
@@ -1812,7 +1816,7 @@
           const simDiv = document.createElement("div");
           simDiv.id = `sim-${i}`;
           simDiv.classList.add("simulator-instance");
-          if (i !== 1) simDiv.style.display = "none"; // Hide inactive tabs
+          if (i !== 1) simDiv.style.display = "none";
           simDiv.innerHTML = getSimulatorHTMLTemplate(i);
           mainContainer.appendChild(simDiv);
 
@@ -1820,7 +1824,7 @@
           const simulator = new Simulator(i, simDiv);
           simulators.push(simulator);
 
-          // 4. Initialize Inner Tabs for this instance (using simple show/hide)
+          // 4. Initialize Inner Tabs for this instance
           initializeInnerTabs(simDiv, i);
         }
 
@@ -1830,19 +1834,15 @@
             event.preventDefault();
             const targetId = event.target.href.split("#")[1];
 
-            // Hide all simulator divs
             mainContainer
               .querySelectorAll(".simulator-instance")
               .forEach((div) => (div.style.display = "none"));
-            // Deactivate all main tabs
             tabContainer.querySelectorAll("a").forEach((a) => a.classList.remove("active"));
 
-            // Show target div
             const targetDiv = document.getElementById(targetId);
             if (targetDiv) {
               targetDiv.style.display = "block";
             }
-            // Activate target tab
             event.target.classList.add("active");
           }
         });
@@ -1857,23 +1857,19 @@
         innerTabs.addEventListener("click", (event) => {
           if (event.target.tagName === "A") {
             event.preventDefault();
-            const targetContentId = event.target.getAttribute("href"); // Get href like #tab-settings-1
+            const targetContentId = event.target.getAttribute("href");
 
-            // Hide all content panes within this simulator
-            innerContents.forEach((content) => content.classList.remove("active")); // Assuming 'active' class controls display: block/none
-            innerContents.forEach((content) => (content.style.display = "none")); // Force hide
+            innerContents.forEach((content) => content.classList.remove("active"));
+            innerContents.forEach((content) => (content.style.display = "none"));
 
-            // Deactivate all tabs within this simulator
             innerTabs.querySelectorAll("a").forEach((a) => a.classList.remove("active"));
 
-            // Show target content pane
             const targetContent = simulatorContainer.querySelector(targetContentId);
             if (targetContent) {
               targetContent.classList.add("active");
-              targetContent.style.display = "block"; // Force show
+              targetContent.style.display = "block";
             }
 
-            // Activate target tab
             event.target.classList.add("active");
           }
         });
@@ -1890,10 +1886,6 @@
       // Initialize when the DOM is ready
       $(document).ready(function () {
         initializeSimulators();
-        // Note: The original tabtastic.js might interfere or not work as expected
-        // with the dynamic content and the custom inner tab logic above.
-        // It's safer to rely on the custom initializeInnerTabs function.
-        // If tabtastic.js is essential, it would need careful integration or modification.
       });
     </script>
   </body>
