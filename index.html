@@ -98,13 +98,21 @@
           this.state = {
             websocket: null,
             isConnected: false,
-            lastSentAction: null,
+            // messageId -> action, for the one or more of our own requests currently awaiting a
+            // reply. OCPP-J responses only carry the messageId back, not the action, and are
+            // matched to their request by that id — a single "last sent action" variable breaks
+            // as soon as two of our own requests are in flight at once (e.g. the periodic
+            // Heartbeat ticking while we're still waiting on a StartTransaction reply), because
+            // it gets overwritten by the second request before the first one's reply arrives.
+            pendingRequests: new Map(),
             heartbeatIntervalId: null,
             meterValueIntervalId: null,
             meterValuesArr: null,
             meterValueIndex: 0,
             currentTransactionId: null,
             isResuming: false, // Flag to indicate if we loaded persisted state
+            simulatingPowerLoss: false, // Flag: next successful reconnect should StopTransaction(PowerLoss) instead of resuming
+            lastStopWasPowerLoss: false, // Set right before a PowerLoss stop; read back in the StopTransaction CallResult handler so it knows to report the EV as still connected, not Available
             messageCounter: 0, // Simple counter for unique message IDs
             activeTransactions: [], // Store transaction IDs for display
             // --- Reconnection State ---
@@ -112,6 +120,7 @@
             maxReconnectAttempts: 5,
             reconnectTimerId: null,
             reconnectBaseDelay: 2000, // ms, initial delay
+            powerLossReturnDelay: 20000, // ms — how long the charger stays fully offline before its first reconnect attempt after a simulated power loss
             pendingStopConfirmationForTxId: null, // ID of transaction for which StopTransaction.req has been sent
           };
           this.uiElements = {}; // References to DOM elements for this instance
@@ -143,9 +152,14 @@
         _attemptReconnect() {
           if (this.state.reconnectAttempts < this.state.maxReconnectAttempts) {
             this.state.reconnectAttempts++;
-            // Exponential backoff: e.g., 2s, 4s, 8s, 16s, 32s
+            // A real charger takes time to physically boot back up after power returns, before it
+            // even starts trying to reach the network — so the first reconnect after a simulated
+            // power loss waits this long instead of the normal fast backoff. Any attempts after
+            // that (e.g. if the server isn't ready yet) fall back to exponential backoff as usual.
             const delay =
-              this.state.reconnectBaseDelay * Math.pow(2, this.state.reconnectAttempts - 1);
+              this.state.simulatingPowerLoss && this.state.reconnectAttempts === 1
+                ? this.state.powerLossReturnDelay
+                : this.state.reconnectBaseDelay * Math.pow(2, this.state.reconnectAttempts - 1); // e.g. 2s, 4s, 8s, 16s, 32s
             this.log(
               `Connection lost/failed. Attempting to reconnect in ${delay / 1000}s (Attempt ${
                 this.state.reconnectAttempts
@@ -193,6 +207,9 @@
           );
           this.uiElements.resumeMeterValuesButton = this.container.querySelector(
             `#resume-meter-values-${this.id}`
+          );
+          this.uiElements.simulatePowerLossButton = this.container.querySelector(
+            `#simulate-powerloss-${this.id}`
           );
           // Inputs
           this.uiElements.connectorIdInput = this.container.querySelector(
@@ -256,6 +273,9 @@
           this.uiElements.resumeMeterValuesButton.addEventListener("click", () =>
             this.startSendingMeterValues(true)
           ); // true = resume
+          this.uiElements.simulatePowerLossButton.addEventListener("click", () =>
+            this.simulatePowerLoss()
+          );
 
           // Update config object when inputs change (optional, or do it on action)
           const inputs = this.container.querySelectorAll('input[type="text"]');
@@ -363,6 +383,7 @@
                   : this.config.meterNumMessages;
                 // Also load other relevant config if needed (min/max soc/energy etc) - depends if they should be persisted
                 this.state.isResuming = true; // Mark for resumption check on connect
+                this.state.simulatingPowerLoss = !!parsed.simulatingPowerLoss; // Survive a full tab reload during the outage
                 this.state.activeTransactions = parsed.activeTransactions || [
                   parsed.currentTransactionId,
                 ]; // Restore list
@@ -404,6 +425,7 @@
               // Persist other config used for generation? Optional.
               // minSoc: this.config.minSoc, maxSoc: this.config.maxSoc, ...
               activeTransactions: this.state.activeTransactions, // List of active Tx IDs
+              simulatingPowerLoss: this.state.simulatingPowerLoss, // Survive a full tab reload during the outage
             };
             localStorage.setItem(key, JSON.stringify(stateToPersist));
             this.log(
@@ -630,6 +652,31 @@
           }
         }
 
+        // Simulates a real power interruption: drops the connection uncontrolled (so the
+        // existing "unexpected disconnect" path persists state and auto-reconnects, like a
+        // charger rebooting), and marks that the *next* successful reconnect should report the
+        // interrupted transaction as StopTransaction(reason=PowerLoss) instead of resuming it.
+        simulatePowerLoss() {
+          if (!this.state.currentTransactionId) {
+            alert(`Simulator ${this.id}: No active transaction to interrupt.`);
+            return;
+          }
+          if (!this.state.websocket) {
+            alert(`Simulator ${this.id}: Not connected.`);
+            return;
+          }
+          this.log(
+            `Simulating power loss for Tx ${this.state.currentTransactionId}. Connection will drop and reconnect; StopTransaction(PowerLoss) will be sent once back online.`
+          );
+          this.state.simulatingPowerLoss = true;
+          this.persistState(); // Also persists the flag in case the tab reloads during the outage
+          clearInterval(this.state.meterValueIntervalId);
+          this.state.meterValueIntervalId = null;
+          // Close with an uncontrolled code (not 1000/3001/3002) so onclose treats this like a
+          // real, unexpected drop rather than a clean user-initiated disconnect.
+          this.state.websocket.close(3003, "Simulated power loss");
+        }
+
         sendRequest(action, payload) {
           if (!this.state.websocket || this.state.websocket.readyState !== WebSocket.OPEN) {
             this.log(`Cannot send ${action}: WebSocket not open.`);
@@ -639,7 +686,7 @@
           const message = [2, messageId, action, payload];
           const jsonMessage = JSON.stringify(message);
           this.log(`TX: ${jsonMessage}`);
-          this.state.lastSentAction = action; // Track for response handling
+          this.state.pendingRequests.set(messageId, action); // Track for response handling, by id
           this.state.websocket.send(jsonMessage);
           return true; // Indicate success
         }
@@ -674,21 +721,30 @@
             const messageId = msg[1];
 
             if (messageTypeId === 3) {
-              // CallResult (Response to our request)
+              // CallResult (Response to our request) — matched to the request by messageId, per
+              // the OCPP-J spec, not by whatever we most recently sent.
               const payload = msg[2];
-              this.handleCallResult(this.state.lastSentAction, messageId, payload); // Pass messageId
+              const action = this.state.pendingRequests.get(messageId);
+              this.state.pendingRequests.delete(messageId);
+              if (!action) {
+                this.log(`Received a response for unknown/already-handled messageId ${messageId} — ignoring.`);
+              } else {
+                this.handleCallResult(action, messageId, payload);
+              }
             } else if (messageTypeId === 2) {
               // Call (Command from server)
               const action = msg[2];
               const payload = msg[3];
               this.handleCall(messageId, action, payload);
             } else if (messageTypeId === 4) {
-              // CallError (Error response from server)
+              // CallError (Error response from server) — same messageId-based matching as above.
               const errorCode = msg[2];
               const errorDescription = msg[3];
               const errorDetails = msg[4];
+              const action = this.state.pendingRequests.get(messageId);
+              this.state.pendingRequests.delete(messageId);
               this.handleCallError(
-                this.state.lastSentAction,
+                action,
                 messageId,
                 errorCode,
                 errorDescription,
@@ -716,8 +772,25 @@
                 this.startHeartbeat(interval * 1000);
                 this.updateIndicator("yellow"); // Available
 
-                // *** RESUMPTION LOGIC ***
+                // *** POWER-LOSS RECOVERY: report the interrupted transaction as PowerLoss instead of resuming ***
                 if (
+                  this.state.isResuming &&
+                  this.state.simulatingPowerLoss &&
+                  this.state.currentTransactionId
+                ) {
+                  const interruptedTxId = this.state.currentTransactionId;
+                  this.log(
+                    `Power restored. Reporting interrupted Tx ${interruptedTxId} via StopTransaction(reason=PowerLoss).`
+                  );
+                  this.state.simulatingPowerLoss = false;
+                  // Don't report Available here — the EV is still physically connected, only the
+                  // power was interrupted. Available specifically means no vehicle connected, and
+                  // would make the connector look unplugged for the whole resume window.
+                  this.state.lastStopWasPowerLoss = true;
+                  this.stopTransaction(false, "PowerLoss");
+                }
+                // *** RESUMPTION LOGIC ***
+                else if (
                   this.state.isResuming &&
                   this.state.currentTransactionId &&
                   this.state.meterValuesArr
@@ -788,8 +861,15 @@
               this.state.meterValueIntervalId = null;
               this.uiElements.transToStpInput.value = ""; // Clear stop field
               this.config.transactionIdToStop = null; // Clear config value
-              this.sendStatusNotification("Finishing"); // Optional: Send Finishing then Available
-              setTimeout(() => this.sendStatusNotification("Available"), 2000); // Delay Available status
+              if (this.state.lastStopWasPowerLoss) {
+                // The EV is still plugged in — report Preparing (connected, not charging), never
+                // Available, so the connector still looks resumable when cpms checks its status.
+                this.state.lastStopWasPowerLoss = false;
+                this.sendStatusNotification("Preparing");
+              } else {
+                this.sendStatusNotification("Finishing"); // Optional: Send Finishing then Available
+                setTimeout(() => this.sendStatusNotification("Available"), 2000); // Delay Available status
+              }
               this.updateIndicator("yellow");
               this.state.pendingStopConfirmationForTxId = null; // Clear pending flag
               break;
@@ -1194,7 +1274,7 @@
           }
         }
 
-        stopTransaction(isRemote = false) {
+        stopTransaction(isRemote = false, reasonOverride = null) {
           this.loadConfigFromUI(); // Ensure we have the latest Tx ID from the input field if needed
           const txIdToStop = this.config.transactionIdToStop || this.state.currentTransactionId;
 
@@ -1238,7 +1318,7 @@
             idTag: this.config.idTag,
             timestamp: new Date().toISOString(),
             meterStop: meterStopValue,
-            reason: isRemote ? "Remote" : "Local", // Optional reason
+            reason: reasonOverride || (isRemote ? "Remote" : "Local"), // Optional reason
             // transactionData: [] // Optional: Add final meter values here?
           };
 
@@ -1742,6 +1822,7 @@
                     <!-- *** ADDED METER VALUE BUTTONS *** -->
                     <button id="start-meter-values-${simId}" title="Start sending new meter values for the current transaction">Start Meter Values</button>
                     <button id="resume-meter-values-${simId}" title="Resume sending meter values from the last known point (requires persisted state)">Resume Meter Values</button>
+                    <button id="simulate-powerloss-${simId}" title="Abruptly disconnect while charging; on reconnect, sends StopTransaction with reason=PowerLoss instead of resuming">Simulate Power Loss</button>
 
 
                     <div style="margin-top: 5px;">
