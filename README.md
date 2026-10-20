@@ -98,6 +98,32 @@ A comprehensive, multi-instance OCPP 1.6 charge point simulator with advanced fe
 - **Error Codes**: Set error conditions for testing
 - **Connector Management**: Handle multiple connector scenarios
 
+#### Charger Type (Scheduled Charging tests)
+The **Charger type (path to test)** dropdown decides how the charger answers `GetConfiguration` and
+`SetChargingProfile`, so each Scheduled Charging path can be tested:
+
+| Charger type | Path it tests | GetConfiguration | SetChargingProfile |
+|---|---|---|---|
+| Smart Charging: profile hold | Profile hold | Smart Charging keys | Validated and stored: `Accepted` |
+| No Smart Charging: deferred start | Deferred start | No Smart Charging; the profile keys come back as `unknownKey` | `NotSupported` |
+| Smart Charging: rejects the hold | Fail-open | Smart Charging keys | `Rejected` |
+
+- The server reads the type when the charger boots, so **Disconnect and Connect again** after changing it.
+- **Profiles are enforced:** the simulated car follows the limit in the stored profiles. Current and
+  power in the meter values are capped, the energy register only grows by what the car may draw,
+  `SuspendedEVSE` is sent at 0 A and `Charging` when the limit is lifted.
+- Meter values are sent from **Start Meter Values** (or when the server asks for them). For a long
+  hold, raise **Meter Msgs** so the list lasts the whole hold.
+- **Current:** every message sends `min(Av Current, charging limit)`. A profile can only lower the
+  current, never raise it, so a limit above Av Current changes nothing. With no limit, Av Current
+  is sent.
+- **Live values:** **Av Current** and **Av Power** are read live for every message, so a change
+  counts from the next message on, with no need to press **Start Meter Values** again. Energy
+  follows the plan, reduced by what the limit holds back.
+- Limits: watts are converted at 230 V on one phase, recurring profiles are treated as absolute,
+  `GetCompositeSchedule` reports only the limit that applies now, and stored profiles are lost on a
+  page reload.
+
 ## Interface Overview
 
 ### Main Controls
