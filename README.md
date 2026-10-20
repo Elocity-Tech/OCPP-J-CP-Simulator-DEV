@@ -114,6 +114,12 @@ The **Charger type (path to test)** dropdown decides how the charger answers `Ge
   `SuspendedEVSE` is sent at 0 A and `Charging` when the limit is lifted.
 - Meter values are sent from **Start Meter Values** (or when the server asks for them). For a long
   hold, raise **Meter Msgs** so the list lasts the whole hold.
+- **Current:** every message sends `min(Av Current, charging limit)`. A profile can only lower the
+  current, never raise it, so a limit above Av Current changes nothing. With no limit, Av Current
+  is sent.
+- **Live values:** **Av Current** and **Av Power** are read live for every message, so a change
+  counts from the next message on, with no need to press **Start Meter Values** again. Energy
+  follows the plan, reduced by what the limit holds back.
 - Limits: watts are converted at 230 V on one phase, recurring profiles are treated as absolute,
   `GetCompositeSchedule` reports only the limit that applies now, and stored profiles are lost on a
   page reload.

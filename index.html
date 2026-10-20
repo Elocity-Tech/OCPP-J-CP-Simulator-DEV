@@ -1529,30 +1529,26 @@
         }
 
         /**
-         * Meter values follow the limit: current and power are capped, and the energy register only
-         * grows by the share of the planned step the car was allowed to draw (nothing at 0 A).
+         * Current and power in every message are the Av Current and Av Power boxes, read live, capped
+         * by the charging limit: the car sends min(Av Current, limit). The energy register only grows
+         * by the share of the planned step the car was allowed to draw (nothing at 0 A).
          * `index` is the position of this message in `meterValuesArr`.
          */
         _capMeterValuesToLimit(meterValuePayload, index) {
           const limit = this._getEffectiveLimitAmps();
-          if (limit === null) {
-            if (this.state.lastLoggedCapAmps !== null) {
-              this.log("Charging limit lifted: sending the normal current again");
-              this.state.lastLoggedCapAmps = null;
-            }
-            return;
-          }
-          const avCurrent = this.config.avCurrent;
-          const current = Math.min(avCurrent, limit);
-          const ratio = avCurrent > 0 ? current / avCurrent : 0;
+          const { avCurrent, avPower } = this.config;
+          const current = limit === null ? avCurrent : Math.min(avCurrent, limit);
+          const ratio = avCurrent > 0 ? current / avCurrent : 1;
           meterValuePayload.meterValue.forEach((entry) =>
             entry.sampledValue.forEach((sampled) => {
               if (sampled.measurand === "Current.Import")
                 sampled.value = String(Math.round(current * 10) / 10);
               else if (sampled.measurand === "Power.Active.Import")
-                sampled.value = String(Math.round(Number(sampled.value) * ratio));
+                sampled.value = String(Math.round(avPower * ratio));
             })
           );
+
+          if (limit === null) return;
 
           // Energy: take the withheld part of this step off this and every later message in the
           // list, so the register stays one steady line and the stop value matches what was sent
@@ -2181,7 +2177,7 @@
                     <button id="status-${simId}">Status Notif.</button>
                     <button id="data_transfer-${simId}">Data Transfer</button>
                     <!-- *** ADDED METER VALUE BUTTONS *** -->
-                    <button id="start-meter-values-${simId}" title="Start sending new meter values for the current transaction">Start Meter Values</button>
+                    <button id="start-meter-values-${simId}" title="Start sending new meter values for the current transaction. Av Current and Av Power are read live for every message, so changing them while sending needs no restart">Start Meter Values</button>
                     <button id="resume-meter-values-${simId}" title="Resume sending meter values from the last known point (requires persisted state)">Resume Meter Values</button>
                     <button id="simulate-powerloss-${simId}" title="Abruptly disconnect while charging; on reconnect, sends StopTransaction with reason=PowerLoss instead of resuming">Simulate Power Loss</button>
 
