@@ -87,6 +87,9 @@
     </script>
 
     <script>
+      // What a Smart Charging charger reports in GetConfiguration, and enforces in SetChargingProfile
+      const SMART_CHARGING_LIMITS = { maxStackLevel: 5, maxPeriods: 6, maxProfiles: 10 };
+
       // =============================================
       // Simulator Class Definition
       // =============================================
@@ -122,6 +125,12 @@
             reconnectBaseDelay: 2000, // ms, initial delay
             powerLossReturnDelay: 20000, // ms — how long the charger stays fully offline before its first reconnect attempt after a simulated power loss
             pendingStopConfirmationForTxId: null, // ID of transaction for which StopTransaction.req has been sent
+            // --- Smart Charging ---
+            chargingProfiles: [], // Profiles accepted through SetChargingProfile (not persisted, like a charger reboot would not keep TxProfiles)
+            txStartedAt: null, // Epoch ms of the active transaction's start; Relative profiles count from here
+            limitWatcherId: null, // Interval that notices a limit going to / from 0 A
+            limitWasZero: false, // Last state the watcher reported
+            lastLoggedCapAmps: null, // Last capped current written to the log (null = not capped)
           };
           this.uiElements = {}; // References to DOM elements for this instance
 
@@ -210,6 +219,9 @@
           );
           this.uiElements.simulatePowerLossButton = this.container.querySelector(
             `#simulate-powerloss-${this.id}`
+          );
+          this.uiElements.chargerTypeSelect = this.container.querySelector(
+            `#chargerType-${this.id}`
           );
           // Inputs
           this.uiElements.connectorIdInput = this.container.querySelector(
@@ -534,6 +546,7 @@
               // Clear local transaction state immediately
               const pendingTxId = this.state.pendingStopConfirmationForTxId;
               this.state.currentTransactionId = null;
+              this._endTransactionProfiles(); // A TxProfile ends with its transaction
               this.state.meterValuesArr = null;
               this.state.meterValueIndex = 0;
               clearInterval(this.state.meterValueIntervalId);
@@ -831,11 +844,14 @@
             case "StartTransaction":
               if (payload.idTagInfo && payload.idTagInfo.status === "Accepted") {
                 this.state.currentTransactionId = payload.transactionId;
+                this.state.txStartedAt = Date.now();
                 this.log(`Transaction ${this.state.currentTransactionId} started.`);
                 this.uiElements.transToStpInput.value = this.state.currentTransactionId; // Update stop field
                 this.config.transactionIdToStop = this.state.currentTransactionId; // Update config value
                 this.addTransactionToList(this.state.currentTransactionId);
                 this.sendStatusNotification("Charging");
+                // A TxDefaultProfile or ChargePointMaxProfile may already limit this transaction
+                if (this.state.chargingProfiles.length) this._applyChargingLimit();
                 // *** NOTE: Removed automatic startSendingMeterValues here. Use Start button or keep it if preferred. ***
                 // this.startSendingMeterValues(false); // false = start new
                 this.updateIndicator("green");
@@ -857,6 +873,7 @@
               this.state.currentTransactionId = null;
               this.state.meterValuesArr = null;
               this.state.meterValueIndex = 0;
+              this._endTransactionProfiles(); // A TxProfile ends with its transaction
               clearInterval(this.state.meterValueIntervalId); // Ensure meter interval is stopped
               this.state.meterValueIntervalId = null;
               this.uiElements.transToStpInput.value = ""; // Clear stop field
@@ -1013,10 +1030,13 @@
                 this.sendResponse(messageId, { status: "Rejected" }); // Wrong connector
               }
               break;
-            case "SetChargingProfile":
+            case "SetChargingProfile": {
               this.log(`Processing SetChargingProfile for Connector ${payload.connectorId}`);
-              this.sendResponse(messageId, { status: "Accepted" });
+              const setStatus = this._handleSetChargingProfile(payload);
+              this.sendResponse(messageId, { status: setStatus });
+              if (setStatus === "Accepted") this._applyChargingLimit();
               break;
+            }
 
             case "UnlockConnector":
               this.log(`Processing UnlockConnector for Connector ${payload.connectorId}`);
@@ -1037,34 +1057,27 @@
 
             case "GetConfiguration":
               this.log(`Processing GetConfiguration command`);
-              // Return some basic configuration keys
+              // The keys depend on the charger type chosen in the UI. A charger without Smart
+              // Charging doesn't know the Smart Charging keys, so they come back as unknownKey.
               const configKeys = payload.key || [];
-              const configurationKey = [
-                {
-                  key: "HeartbeatInterval",
-                  readonly: false,
-                  value: "60",
-                },
-                {
-                  key: "MeterValueSampleInterval",
-                  readonly: false,
-                  value: "10",
-                },
-                {
-                  key: "NumberOfConnectors",
-                  readonly: true,
-                  value: "1",
-                },
-              ];
+              const configurationKey = this._getConfigurationKeys();
 
               let filteredKeys = configurationKey;
+              let unknownKeys = [];
               if (configKeys.length > 0) {
+                const known = configurationKey.map((config) => config.key);
                 filteredKeys = configurationKey.filter((config) => configKeys.includes(config.key));
+                unknownKeys = configKeys.filter((key) => !known.includes(key));
               }
+              this.log(
+                `GetConfiguration (${this._getChargerType()}): returning ${
+                  filteredKeys.length
+                } key(s)${unknownKeys.length ? `, unknown: ${unknownKeys.join(", ")}` : ""}`
+              );
 
               this.sendResponse(messageId, {
                 configurationKey: filteredKeys,
-                unknownKey: [],
+                unknownKey: unknownKeys,
               });
               break;
 
@@ -1110,28 +1123,41 @@
                   payload.connectorId || "All"
                 }`
               );
-              this.sendResponse(messageId, { status: "Accepted" });
+              if (!this._supportsSmartCharging()) {
+                this.sendResponse(messageId, { status: "Unknown" });
+                break;
+              }
+              {
+                const removed = this._clearChargingProfiles(payload);
+                this.sendResponse(messageId, { status: removed ? "Accepted" : "Unknown" });
+                if (removed) this._applyChargingLimit();
+              }
               break;
 
             case "GetCompositeSchedule":
               this.log(
                 `Processing GetCompositeSchedule - ConnectorId: ${payload.connectorId}, Duration: ${payload.duration}`
               );
-              this.sendResponse(messageId, {
-                status: "Accepted",
-                connectorId: payload.connectorId,
-                scheduleStart: new Date().toISOString(),
-                chargingSchedule: {
-                  duration: payload.duration,
-                  chargingRateUnit: "W",
-                  chargingSchedulePeriod: [
-                    {
-                      startPeriod: 0,
-                      limit: 7000,
-                    },
-                  ],
-                },
-              });
+              if (!this._supportsSmartCharging()) {
+                this.sendResponse(messageId, { status: "Rejected" });
+                break;
+              }
+              {
+                // One period with the limit that applies right now
+                const limitAmps = this._getEffectiveLimitAmps();
+                this.sendResponse(messageId, {
+                  status: "Accepted",
+                  connectorId: payload.connectorId,
+                  scheduleStart: new Date().toISOString(),
+                  chargingSchedule: {
+                    duration: payload.duration,
+                    chargingRateUnit: "A",
+                    chargingSchedulePeriod: [
+                      { startPeriod: 0, limit: limitAmps === null ? this.config.avCurrent : limitAmps },
+                    ],
+                  },
+                });
+              }
               break;
 
             case "TriggerMessage":
@@ -1215,6 +1241,337 @@
                 `Command ${action} is not supported by this simulator.`
               );
               break;
+          }
+        }
+
+        // --- Smart Charging (the charger type is chosen in the UI) ---
+
+        /** "profile", "deferred" or "rejects": read live, so a change needs no reload */
+        _getChargerType() {
+          const select = this.uiElements.chargerTypeSelect;
+          return select ? select.value : "profile";
+        }
+
+        _supportsSmartCharging() {
+          return this._getChargerType() !== "deferred";
+        }
+
+        /**
+         * What GetConfiguration reports. A charger without Smart Charging has none of the
+         * Smart Charging keys (they come back as unknownKey), so the server picks the deferred start.
+         */
+        _getConfigurationKeys() {
+          const smart = this._supportsSmartCharging();
+          const keys = [
+            { key: "HeartbeatInterval", readonly: false, value: "60" },
+            { key: "MeterValueSampleInterval", readonly: false, value: "10" },
+            { key: "NumberOfConnectors", readonly: true, value: "1" },
+            { key: "ConnectionTimeOut", readonly: false, value: "60" },
+            {
+              key: "SupportedFeatureProfiles",
+              readonly: true,
+              value: smart
+                ? "Core,FirmwareManagement,RemoteTrigger,SmartCharging"
+                : "Core,FirmwareManagement,RemoteTrigger",
+            },
+          ];
+          if (smart) {
+            keys.push(
+              {
+                key: "ChargeProfileMaxStackLevel",
+                readonly: true,
+                value: String(SMART_CHARGING_LIMITS.maxStackLevel),
+              },
+              {
+                key: "ChargingScheduleMaxPeriods",
+                readonly: true,
+                value: String(SMART_CHARGING_LIMITS.maxPeriods),
+              },
+              // OCPP 1.6 words for the units: "Current" (A) and "Power" (W)
+              { key: "ChargingScheduleAllowedChargingRateUnit", readonly: true, value: "Current,Power" },
+              {
+                key: "MaxChargingProfilesInstalled",
+                readonly: true,
+                value: String(SMART_CHARGING_LIMITS.maxProfiles),
+              }
+            );
+          }
+          return keys;
+        }
+
+        /** Validates and stores a profile. Returns the SetChargingProfile status. */
+        _handleSetChargingProfile(payload) {
+          const chargerType = this._getChargerType();
+          if (chargerType === "deferred") {
+            this.log("SetChargingProfile: NotSupported (this charger type has no Smart Charging)");
+            return "NotSupported";
+          }
+          if (chargerType === "rejects") {
+            this.log("SetChargingProfile: Rejected (this charger type refuses the hold)");
+            return "Rejected";
+          }
+
+          const reject = (why) => {
+            this.log(`SetChargingProfile rejected: ${why}`);
+            return "Rejected";
+          };
+          const profile = payload.csChargingProfiles;
+          const schedule = profile && profile.chargingSchedule;
+          if (!schedule) return reject("csChargingProfiles.chargingSchedule is missing");
+
+          const connectorId = Number(payload.connectorId);
+          const purpose = profile.chargingProfilePurpose;
+          const stackLevel = Number(profile.stackLevel);
+          const periods = (schedule.chargingSchedulePeriod || [])
+            .map((period) => ({
+              startPeriod: Number(period.startPeriod),
+              limit: Number(period.limit),
+              numberPhases: period.numberPhases ? Number(period.numberPhases) : null,
+            }))
+            .sort((a, b) => a.startPeriod - b.startPeriod);
+          const txId = this.state.currentTransactionId;
+
+          if (![0, 1].includes(connectorId)) return reject(`unknown connector ${payload.connectorId}`);
+          if (!["ChargePointMaxProfile", "TxDefaultProfile", "TxProfile"].includes(purpose))
+            return reject(`unknown purpose ${purpose}`);
+          if (purpose === "ChargePointMaxProfile" && connectorId !== 0)
+            return reject("ChargePointMaxProfile is for connector 0");
+          if (!Number.isInteger(stackLevel) || stackLevel < 0 || stackLevel > SMART_CHARGING_LIMITS.maxStackLevel)
+            return reject(
+              `stack level ${profile.stackLevel} is above the maximum ${SMART_CHARGING_LIMITS.maxStackLevel}`
+            );
+          if (!["A", "W"].includes(schedule.chargingRateUnit))
+            return reject(`unknown charging rate unit ${schedule.chargingRateUnit}`);
+          if (!periods.length || periods[0].startPeriod !== 0)
+            return reject("the first period must start at 0");
+          if (periods.length > SMART_CHARGING_LIMITS.maxPeriods)
+            return reject(`${periods.length} periods, the maximum is ${SMART_CHARGING_LIMITS.maxPeriods}`);
+          if (periods.some((period) => !(period.limit >= 0)))
+            return reject("a period has no valid limit");
+          if (purpose === "TxProfile") {
+            if (connectorId === 0) return reject("a TxProfile needs a connector");
+            if (!txId) return reject("TxProfile without an active transaction");
+            if (profile.transactionId != null && Number(profile.transactionId) !== Number(txId))
+              return reject(
+                `TxProfile is for transaction ${profile.transactionId}, the active one is ${txId}`
+              );
+          }
+
+          const stored = {
+            profileId: profile.chargingProfileId != null ? profile.chargingProfileId : null,
+            connectorId,
+            purpose,
+            stackLevel,
+            kind: profile.chargingProfileKind,
+            transactionId: purpose === "TxProfile" ? Number(txId) : null,
+            startSchedule: schedule.startSchedule ? Date.parse(schedule.startSchedule) : null,
+            validFrom: profile.validFrom ? Date.parse(profile.validFrom) : null,
+            validTo: profile.validTo ? Date.parse(profile.validTo) : null,
+            duration: schedule.duration != null ? Number(schedule.duration) : null,
+            unit: schedule.chargingRateUnit,
+            periods,
+            receivedAt: Date.now(),
+          };
+          // The same profile id, or the same connector + purpose + stack level, is replaced
+          const kept = this.state.chargingProfiles.filter(
+            (other) =>
+              !(
+                (stored.profileId !== null && other.profileId === stored.profileId) ||
+                (other.connectorId === connectorId &&
+                  other.purpose === purpose &&
+                  other.stackLevel === stackLevel)
+              )
+          );
+          if (kept.length >= SMART_CHARGING_LIMITS.maxProfiles)
+            return reject(`${kept.length} profiles installed, the maximum is ${SMART_CHARGING_LIMITS.maxProfiles}`);
+          this.state.chargingProfiles = [...kept, stored];
+          this.log(
+            `SetChargingProfile accepted: ${purpose} stack ${stackLevel} on connector ${connectorId}, ${
+              periods.length
+            } period(s) in ${stored.unit}: ${periods
+              .map((period) => `${period.startPeriod}s -> ${period.limit}`)
+              .join(", ")}`
+          );
+          return "Accepted";
+        }
+
+        /** Removes the profiles that match every field the request gives. Returns how many. */
+        _clearChargingProfiles(payload) {
+          const before = this.state.chargingProfiles.length;
+          this.state.chargingProfiles = this.state.chargingProfiles.filter((profile) => {
+            const matches =
+              (payload.id == null || profile.profileId === payload.id) &&
+              (payload.connectorId == null || profile.connectorId === Number(payload.connectorId)) &&
+              (!payload.chargingProfilePurpose || profile.purpose === payload.chargingProfilePurpose) &&
+              (payload.stackLevel == null || profile.stackLevel === Number(payload.stackLevel));
+            return !matches;
+          });
+          const removed = before - this.state.chargingProfiles.length;
+          this.log(`ClearChargingProfile removed ${removed} profile(s)`);
+          return removed;
+        }
+
+        /** A TxProfile ends with its transaction */
+        _endTransactionProfiles() {
+          this.state.chargingProfiles = this.state.chargingProfiles.filter(
+            (profile) => profile.purpose !== "TxProfile"
+          );
+          this.state.txStartedAt = null;
+          this.state.limitWasZero = false;
+          this.state.lastLoggedCapAmps = null;
+          if (this.state.limitWatcherId !== null) {
+            clearInterval(this.state.limitWatcherId);
+            this.state.limitWatcherId = null;
+          }
+        }
+
+        /**
+         * The limit one profile gives right now, in amps; null when it doesn't apply now.
+         * Watts are turned into amps at 230 V on one phase (the simulated charger is single-phase).
+         */
+        _getProfileLimitAmps(profile, now) {
+          if (profile.validFrom !== null && now < profile.validFrom) return null;
+          if (profile.validTo !== null && now >= profile.validTo) return null;
+          // Absolute (and Recurring, treated as absolute here) count from startSchedule. A Relative
+          // TxProfile counts from the start of its transaction, any other Relative one from receipt.
+          let start = profile.receivedAt;
+          if (profile.kind === "Absolute" || profile.kind === "Recurring") {
+            if (profile.startSchedule !== null) start = profile.startSchedule;
+          } else if (profile.purpose === "TxProfile" && this.state.txStartedAt) {
+            start = this.state.txStartedAt;
+          }
+          const elapsed = (now - start) / 1000;
+          if (elapsed < 0) return null;
+          if (profile.duration !== null && elapsed >= profile.duration) return null;
+          let period = null;
+          profile.periods.forEach((candidate) => {
+            if (candidate.startPeriod <= elapsed) period = candidate;
+          });
+          if (!period) return null;
+          return profile.unit === "W" ? period.limit / (230 * (period.numberPhases || 1)) : period.limit;
+        }
+
+        /**
+         * The limit that applies to the connector now, in amps, or null when no profile limits it:
+         * the highest stack level of a TxProfile (else TxDefaultProfile) that applies, capped by
+         * the ChargePointMaxProfile.
+         */
+        _getEffectiveLimitAmps() {
+          const now = Date.now();
+          const connectorId = parseInt(this.uiElements.connectorIdInput.value) || 1;
+          const txId = this.state.currentTransactionId;
+          const applicable = this.state.chargingProfiles.filter(
+            (profile) =>
+              (profile.connectorId === 0 || profile.connectorId === connectorId) &&
+              (profile.purpose !== "TxProfile" || (txId && profile.transactionId === Number(txId)))
+          );
+          const limitFor = (purpose) => {
+            const candidates = applicable
+              .filter((profile) => profile.purpose === purpose)
+              .sort((a, b) => b.stackLevel - a.stackLevel);
+            for (const profile of candidates) {
+              const limit = this._getProfileLimitAmps(profile, now);
+              if (limit !== null) return limit;
+            }
+            return null;
+          };
+          const txLimit = limitFor("TxProfile");
+          const defaultLimit = limitFor("TxDefaultProfile");
+          const maxLimit = limitFor("ChargePointMaxProfile");
+          let limit = txLimit !== null ? txLimit : defaultLimit;
+          if (maxLimit !== null) limit = limit === null ? maxLimit : Math.min(limit, maxLimit);
+          return limit;
+        }
+
+        /** Starts the watcher (once) and checks the limit now */
+        _applyChargingLimit() {
+          if (this.state.limitWatcherId === null) {
+            this.state.limitWatcherId = setInterval(() => this._checkChargingLimit(), 1000);
+          }
+          this._checkChargingLimit();
+        }
+
+        /**
+         * A real charger reports SuspendedEVSE when its limit is 0 A and Charging when the limit
+         * lets the car draw current again. The server relies on both status messages.
+         */
+        _checkChargingLimit() {
+          if (!this.state.currentTransactionId) {
+            if (this.state.limitWatcherId !== null) {
+              clearInterval(this.state.limitWatcherId);
+              this.state.limitWatcherId = null;
+            }
+            this.state.limitWasZero = false;
+            return;
+          }
+          if (!this.state.isConnected) return;
+          const limit = this._getEffectiveLimitAmps();
+          const isZero = limit !== null && limit < 0.5;
+          if (isZero === this.state.limitWasZero) return;
+          this.state.limitWasZero = isZero;
+          this.log(
+            isZero
+              ? "Charging limit is 0 A: the car is held (SuspendedEVSE)"
+              : "Charging limit lifted: the car can charge (Charging)"
+          );
+          this.sendStatusNotification(isZero ? "SuspendedEVSE" : "Charging");
+        }
+
+        /** Meter values follow the limit: the car never draws more than the profile allows */
+        /** The Energy.Active.Import.Register sample of one generated meter value set, or null */
+        _findEnergySample(meterValueSet) {
+          for (const entry of meterValueSet.meterValue) {
+            for (const sampled of entry.sampledValue) {
+              if (sampled.measurand === "Energy.Active.Import.Register") return sampled;
+            }
+          }
+          return null;
+        }
+
+        /**
+         * Meter values follow the limit: current and power are capped, and the energy register only
+         * grows by the share of the planned step the car was allowed to draw (nothing at 0 A).
+         * `index` is the position of this message in `meterValuesArr`.
+         */
+        _capMeterValuesToLimit(meterValuePayload, index) {
+          const limit = this._getEffectiveLimitAmps();
+          if (limit === null) {
+            if (this.state.lastLoggedCapAmps !== null) {
+              this.log("Charging limit lifted: sending the normal current again");
+              this.state.lastLoggedCapAmps = null;
+            }
+            return;
+          }
+          const avCurrent = this.config.avCurrent;
+          const current = Math.min(avCurrent, limit);
+          const ratio = avCurrent > 0 ? current / avCurrent : 0;
+          meterValuePayload.meterValue.forEach((entry) =>
+            entry.sampledValue.forEach((sampled) => {
+              if (sampled.measurand === "Current.Import")
+                sampled.value = String(Math.round(current * 10) / 10);
+              else if (sampled.measurand === "Power.Active.Import")
+                sampled.value = String(Math.round(Number(sampled.value) * ratio));
+            })
+          );
+
+          // Energy: take the withheld part of this step off this and every later message in the
+          // list, so the register stays one steady line and the stop value matches what was sent
+          const arr = this.state.meterValuesArr;
+          const energy = this._findEnergySample(meterValuePayload);
+          const previous = index > 0 && arr[index - 1] ? this._findEnergySample(arr[index - 1]) : null;
+          if (energy && previous && ratio < 1) {
+            const withheldKwh = (Number(energy.value) - Number(previous.value)) * (1 - ratio);
+            for (let i = index; i < arr.length; i++) {
+              const sample = this._findEnergySample(arr[i]);
+              if (sample) sample.value = (Number(sample.value) - withheldKwh).toFixed(3);
+            }
+            energy.value = this._findEnergySample(arr[index]).value;
+          }
+
+          const rounded = Math.round(current * 10) / 10;
+          if (this.state.lastLoggedCapAmps !== rounded) {
+            this.log(`Charging limit ${Math.round(limit * 10) / 10} A: sending ${rounded} A`);
+            this.state.lastLoggedCapAmps = rounded;
           }
         }
 
@@ -1599,6 +1956,8 @@
               meterValuePayload.meterValue.forEach((mv) => (mv.timestamp = now));
               // Ensure correct transactionId is set
               meterValuePayload.transactionId = this.state.currentTransactionId;
+              // The car draws no more than the charging profile allows
+              this._capMeterValuesToLimit(meterValuePayload, this.state.meterValueIndex);
 
               if (this.sendRequest("MeterValues", meterValuePayload)) {
                 this.state.meterValueIndex++;
@@ -1780,12 +2139,14 @@
             if (this.state.currentTransactionId === txId) {
               this.state.currentTransactionId = null; // Clear current if it was removed
               this.config.transactionIdToStop = null;
+              this._endTransactionProfiles(); // Its TxProfile ends with it
             }
             this.persistState(); // Persist the updated list (or clear if no tx active)
           } else if (this.state.currentTransactionId === txId) {
             // If it wasn't in the list but was the current one, still clear current
             this.state.currentTransactionId = null;
             this.config.transactionIdToStop = null;
+            this._endTransactionProfiles();
             this.updateTransactionsUI(); // Update UI to reflect cleared current ID
             this.persistState();
           }
@@ -1824,6 +2185,18 @@
                     <button id="resume-meter-values-${simId}" title="Resume sending meter values from the last known point (requires persisted state)">Resume Meter Values</button>
                     <button id="simulate-powerloss-${simId}" title="Abruptly disconnect while charging; on reconnect, sends StopTransaction with reason=PowerLoss instead of resuming">Simulate Power Loss</button>
 
+                    <!-- Which Scheduled Charging path this charger takes (decided from GetConfiguration) -->
+                    <div style="margin-top: 8px;">
+                      <label for="chargerType-${simId}"><b>Charger type (path to test):</b></label>
+                      <select id="chargerType-${simId}">
+                        <option value="profile">Smart Charging: profile hold</option>
+                        <option value="deferred">No Smart Charging: deferred start</option>
+                        <option value="rejects">Smart Charging: rejects the hold (fail-open)</option>
+                      </select>
+                      <div style="font-size: 0.85em; color: #555;">
+                        The server reads this when the charger boots. After changing it, Disconnect and Connect again.
+                      </div>
+                    </div>
 
                     <div style="margin-top: 5px;">
                       <span class="indicator" id="red-${simId}" style="display:inline-block; color: red; font-weight: bold;">&#9632; Disconnected</span>
